@@ -1,0 +1,161 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard - Research Paper Analyzer{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- Welcome Section -->
+    <div class="col-12 mb-4">
+        <div class="card bg-primary text-white">
+            <div class="card-body">
+                <h2 class="card-title">
+                    <i class="fas fa-tachometer-alt me-2"></i>Welcome, {{ user.first_name|default:user.username }}!
+                </h2>
+                <p class="card-text">Upload research papers and get comprehensive AI-powered analysis.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistics Cards -->
+    <div class="col-md-3 mb-4">
+        <div class="card text-center">
+            <div class="card-body">
+                <i class="fas fa-file-alt fa-2x text-primary mb-2"></i>
+                <h5 class="card-title">{{ total_papers }}</h5>
+                <p class="card-text">Total Papers</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3 mb-4">
+        <div class="card text-center">
+            <div class="card-body">
+                <i class="fas fa-check-circle fa-2x text-success mb-2"></i>
+                <h5 class="card-title">{{ completed_analyses }}</h5>
+                <p class="card-text">Completed Analyses</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3 mb-4">
+        <div class="card text-center">
+            <div class="card-body">
+                <i class="fas fa-clock fa-2x text-warning mb-2"></i>
+                <h5 class="card-title">{{ pending_analyses }}</h5>
+                <p class="card-text">Pending Analyses</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3 mb-4">
+        <div class="card text-center">
+            <div class="card-body">
+                <i class="fas fa-chart-bar fa-2x text-info mb-2"></i>
+                <h5 class="card-title">{{ recent_analyses|length }}</h5>
+                <p class="card-text">Recent Analyses</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-bolt me-2"></i>Quick Actions
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <a href="{% url 'papers:upload' %}" class="btn btn-primary">
+                        <i class="fas fa-upload me-2"></i>Upload New Paper
+                    </a>
+                    <a href="{% url 'papers:list' %}" class="btn btn-outline-primary">
+                        <i class="fas fa-list me-2"></i>View All Papers
+                    </a>
+                    <a href="{% url 'analysis:dashboard' %}" class="btn btn-outline-info">
+                        <i class="fas fa-chart-bar me-2"></i>Analysis Dashboard
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Papers -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-history me-2"></i>Recent Papers
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if user_papers %}
+                    <div class="list-group list-group-flush">
+                        {% for paper in user_papers %}
+                            <div class="list-group-item d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h6 class="mb-1">{{ paper.title|truncatechars:50 }}</h6>
+                                    <small class="text-muted">
+                                        <i class="fas fa-calendar me-1"></i>{{ paper.created_at|date:"M d, Y" }}
+                                    </small>
+                                </div>
+                                <span class="badge bg-{% if paper.status == 'completed' %}success{% elif paper.status == 'processing' %}warning{% else %}secondary{% endif %} rounded-pill">
+                                    {{ paper.status|title }}
+                                </span>
+                            </div>
+                        {% endfor %}
+                    </div>
+                    <div class="mt-3">
+                        <a href="{% url 'papers:list' %}" class="btn btn-outline-primary btn-sm">
+                            View All Papers
+                        </a>
+                    </div>
+                {% else %}
+                    <p class="text-muted text-center">No papers uploaded yet.</p>
+                    <div class="text-center">
+                        <a href="{% url 'papers:upload' %}" class="btn btn-primary">
+                            <i class="fas fa-upload me-1"></i>Upload Your First Paper
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Analyses -->
+    {% if recent_analyses %}
+    <div class="col-12 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-chart-line me-2"></i>Recent Analyses
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    {% for analysis in recent_analyses %}
+                        <div class="col-md-6 mb-3">
+                            <div class="card border">
+                                <div class="card-body">
+                                    <h6 class="card-title">{{ analysis.paper.title|truncatechars:40 }}</h6>
+                                    <p class="card-text small">{{ analysis.abstract_summary|truncatechars:100 }}</p>
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <small class="text-muted">
+                                            <i class="fas fa-calendar me-1"></i>{{ analysis.created_at|date:"M d, Y" }}
+                                        </small>
+                                        <a href="{% url 'analysis:results' analysis.paper.id %}" class="btn btn-outline-primary btn-sm">
+                                            View Analysis
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %} 

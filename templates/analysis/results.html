@@ -1,0 +1,350 @@
+{% extends 'base.html' %}
+
+{% block title %}Analysis Results - {{ paper.title }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <!-- Header -->
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2>
+                <i class="fas fa-chart-bar me-2"></i>Analysis Results
+            </h2>
+            <div class="btn-group">
+                <a href="{% url 'analysis:export' paper.id 'json' %}" class="btn btn-outline-primary btn-sm">
+                    <i class="fas fa-file-code me-1"></i>Export JSON
+                </a>
+                <a href="{% url 'analysis:export' paper.id 'csv' %}" class="btn btn-outline-primary btn-sm">
+                    <i class="fas fa-file-csv me-1"></i>Export CSV
+                </a>
+            </div>
+        </div>
+
+        {% if analysis %}
+            <!-- Paper Info -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-file-alt me-2"></i>Paper Information
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-8">
+                            <h6>{{ paper.title }}</h6>
+                            {% if paper.authors %}
+                                <p class="text-muted">{{ paper.authors|join:", " }}</p>
+                            {% endif %}
+                            {% if paper.year %}
+                                <p class="text-muted">{{ paper.year }}</p>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-4 text-end">
+                            <span class="badge bg-success">Analysis Complete</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Summary Section -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-clipboard me-2"></i>Summary
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-12 mb-3">
+                            <h6>Abstract Summary</h6>
+                            <p>{{ analysis.abstract_summary }}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Main Findings</h6>
+                            {% if analysis.main_findings %}
+                                <ul>
+                                    {% for finding in analysis.main_findings %}
+                                        <li>{{ finding }}</li>
+                                    {% endfor %}
+                                </ul>
+                            {% else %}
+                                <p class="text-muted">No main findings extracted.</p>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Key Conclusions</h6>
+                            {% if analysis.key_conclusions %}
+                                <ul>
+                                    {% for conclusion in analysis.key_conclusions %}
+                                        <li>{{ conclusion }}</li>
+                                    {% endfor %}
+                                </ul>
+                            {% else %}
+                                <p class="text-muted">No key conclusions extracted.</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Methodology Section -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-cogs me-2"></i>Methodology
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Study Design</h6>
+                            <p>{{ analysis.study_design }}</p>
+                            
+                            <h6>Theoretical Framework</h6>
+                            <p>{{ analysis.theoretical_framework }}</p>
+                            
+                            <h6>Research Question</h6>
+                            <p>{{ analysis.research_question }}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Study Objectives</h6>
+                            {% if analysis.study_objectives %}
+                                <ul>
+                                    {% for objective in analysis.study_objectives %}
+                                        <li>{{ objective }}</li>
+                                    {% endfor %}
+                                </ul>
+                            {% else %}
+                                <p class="text-muted">No study objectives extracted.</p>
+                            {% endif %}
+                            
+                            <h6>Hypotheses Tested</h6>
+                            {% if analysis.hypotheses_tested %}
+                                <ul>
+                                    {% for hypothesis in analysis.hypotheses_tested %}
+                                        <li>{{ hypothesis }}</li>
+                                    {% endfor %}
+                                </ul>
+                            {% else %}
+                                <p class="text-muted">No hypotheses extracted.</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Intervention Section -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-tools me-2"></i>Intervention & Outcomes
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Intervention</h6>
+                            <p>{{ analysis.intervention }}</p>
+                            
+                            <h6>Intervention Effects</h6>
+                            <p>{{ analysis.intervention_effects }}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Outcome Measures</h6>
+                            {% if analysis.outcome_measured %}
+                                <ul>
+                                    {% for outcome in analysis.outcome_measured %}
+                                        <li>{{ outcome }}</li>
+                                    {% endfor %}
+                                </ul>
+                            {% else %}
+                                <p class="text-muted">No outcome measures extracted.</p>
+                            {% endif %}
+                            
+                            <h6>Measurement Methods</h6>
+                            {% if analysis.measurement_methods %}
+                                <ul>
+                                    {% for method in analysis.measurement_methods %}
+                                        <li>{{ method }}</li>
+                                    {% endfor %}
+                                </ul>
+                            {% else %}
+                                <p class="text-muted">No measurement methods extracted.</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Findings Section -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-chart-line me-2"></i>Findings & Results
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Primary Outcomes</h6>
+                            {% if analysis.primary_outcomes %}
+                                <ul>
+                                    {% for outcome in analysis.primary_outcomes %}
+                                        <li>{{ outcome }}</li>
+                                    {% endfor %}
+                                </ul>
+                            {% else %}
+                                <p class="text-muted">No primary outcomes extracted.</p>
+                            {% endif %}
+                            
+                            <h6>Secondary Outcomes</h6>
+                            {% if analysis.secondary_outcomes %}
+                                <ul>
+                                    {% for outcome in analysis.secondary_outcomes %}
+                                        <li>{{ outcome }}</li>
+                                    {% endfor %}
+                                </ul>
+                            {% else %}
+                                <p class="text-muted">No secondary outcomes extracted.</p>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Statistical Significance</h6>
+                            <p>{{ analysis.statistical_significance }}</p>
+                            
+                            <h6>Effect Sizes</h6>
+                            {% if analysis.effect_sizes %}
+                                <ul>
+                                    {% for effect in analysis.effect_sizes %}
+                                        <li>{{ effect }}</li>
+                                    {% endfor %}
+                                </ul>
+                            {% else %}
+                                <p class="text-muted">No effect sizes extracted.</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Discussion Section -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-comments me-2"></i>Discussion & Analysis
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Introduction Summary</h6>
+                            <p>{{ analysis.introduction_summary }}</p>
+                            
+                            <h6>Discussion Summary</h6>
+                            <p>{{ analysis.discussion_summary }}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Key Arguments</h6>
+                            {% if analysis.key_arguments %}
+                                <ul>
+                                    {% for argument in analysis.key_arguments %}
+                                        <li>{{ argument }}</li>
+                                    {% endfor %}
+                                </ul>
+                            {% else %}
+                                <p class="text-muted">No key arguments extracted.</p>
+                            {% endif %}
+                            
+                            <h6>Implications</h6>
+                            {% if analysis.implications %}
+                                <ul>
+                                    {% for implication in analysis.implications %}
+                                        <li>{{ implication }}</li>
+                                    {% endfor %}
+                                </ul>
+                            {% else %}
+                                <p class="text-muted">No implications extracted.</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Critical Analysis Section -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-exclamation-triangle me-2"></i>Critical Analysis
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Limitations</h6>
+                            {% if analysis.limitations %}
+                                <ul>
+                                    {% for limitation in analysis.limitations %}
+                                        <li>{{ limitation }}</li>
+                                    {% endfor %}
+                                </ul>
+                            {% else %}
+                                <p class="text-muted">No limitations identified.</p>
+                            {% endif %}
+                            
+                            <h6>Research Gaps</h6>
+                            {% if analysis.research_gaps %}
+                                <ul>
+                                    {% for gap in analysis.research_gaps %}
+                                        <li>{{ gap }}</li>
+                                    {% endfor %}
+                                </ul>
+                            {% else %}
+                                <p class="text-muted">No research gaps identified.</p>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Future Research</h6>
+                            {% if analysis.future_research %}
+                                <ul>
+                                    {% for research in analysis.future_research %}
+                                        <li>{{ research }}</li>
+                                    {% endfor %}
+                                </ul>
+                            {% else %}
+                                <p class="text-muted">No future research directions identified.</p>
+                            {% endif %}
+                            
+                            <h6>Methodological Constraints</h6>
+                            {% if analysis.methodological_constraints %}
+                                <ul>
+                                    {% for constraint in analysis.methodological_constraints %}
+                                        <li>{{ constraint }}</li>
+                                    {% endfor %}
+                                </ul>
+                            {% else %}
+                                <p class="text-muted">No methodological constraints identified.</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        {% else %}
+            <div class="alert alert-warning">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                <strong>Analysis not available.</strong> The analysis for this paper has not been completed yet.
+            </div>
+        {% endif %}
+
+        <!-- Navigation -->
+        <div class="text-center mt-4">
+            <a href="{% url 'papers:detail' paper.id %}" class="btn btn-outline-secondary">
+                <i class="fas fa-arrow-left me-1"></i>Back to Paper
+            </a>
+            <a href="{% url 'papers:list' %}" class="btn btn-outline-primary">
+                <i class="fas fa-list me-1"></i>All Papers
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %} 

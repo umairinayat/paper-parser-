@@ -1,0 +1,39 @@
+Django==5.1.1
+djangorestframework==3.14.0
+django-cors-headers==4.3.1
+django-crispy-forms==2.1
+crispy-bootstrap5==0.7
+python-dotenv==1.0.0
+
+# AI and LangChain - Updated for compatibility
+langchain
+langchain-groq
+langchain-community
+langgraph
+langchain-core
+groq
+
+# Search tools - Updated to fix deprecation warnings
+ddgs
+arxiv
+
+# File processing
+PyPDF2==3.0.1
+PyMuPDF==1.23.26
+python-docx==1.1.0
+
+# Data processing
+pandas
+numpy
+
+# Async support
+aiohttp==3.9.1
+asyncio-throttle==1.0.2
+
+# Utilities
+requests==2.31.0
+beautifulsoup4==4.12.2
+lxml
+
+# Development
+python-decouple==3.8 

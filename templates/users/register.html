@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+{% load crispy_forms_tags %}
+
+{% block title %}Register - Research Paper Analyzer{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8 col-lg-6">
+        <div class="card">
+            <div class="card-header text-center">
+                <h4 class="mb-0">
+                    <i class="fas fa-user-plus me-2"></i>Create Account
+                </h4>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    {{ form|crispy }}
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-user-plus me-1"></i>Create Account
+                        </button>
+                    </div>
+                </form>
+                
+                <hr>
+                
+                <div class="text-center">
+                    <p class="mb-0">Already have an account?</p>
+                    <a href="{% url 'users:login' %}" class="btn btn-outline-primary btn-sm">
+                        <i class="fas fa-sign-in-alt me-1"></i>Login
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

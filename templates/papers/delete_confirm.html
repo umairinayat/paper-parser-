@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+
+{% block title %}Delete Paper - {{ paper.title }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0 text-danger">
+                    <i class="fas fa-exclamation-triangle me-2"></i>Confirm Deletion
+                </h4>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>Warning:</strong> This action cannot be undone.
+                </div>
+                
+                <h5>Are you sure you want to delete this paper?</h5>
+                <p><strong>Title:</strong> {{ paper.title }}</p>
+                {% if paper.authors %}
+                    <p><strong>Authors:</strong> {{ paper.authors|join:", " }}</p>
+                {% endif %}
+                <p><strong>Uploaded:</strong> {{ paper.created_at|date:"F d, Y" }}</p>
+                
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-danger">
+                            <i class="fas fa-trash me-1"></i>Delete Paper
+                        </button>
+                        <a href="{% url 'papers:detail' paper.id %}" class="btn btn-outline-secondary">
+                            <i class="fas fa-times me-1"></i>Cancel
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

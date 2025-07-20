@@ -1,0 +1,123 @@
+{% extends 'base.html' %}
+
+{% block title %}Analysis Dashboard - Research Paper Analyzer{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h2 class="mb-4">
+            <i class="fas fa-chart-bar me-2"></i>Analysis Dashboard
+        </h2>
+
+        <!-- Statistics Cards -->
+        <div class="row mb-4">
+            <div class="col-md-3 mb-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <i class="fas fa-file-alt fa-2x text-primary mb-2"></i>
+                        <h5 class="card-title">{{ total_papers }}</h5>
+                        <p class="card-text">Total Papers</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <i class="fas fa-check-circle fa-2x text-success mb-2"></i>
+                        <h5 class="card-title">{{ completed_analyses }}</h5>
+                        <p class="card-text">Completed Analyses</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <i class="fas fa-clock fa-2x text-warning mb-2"></i>
+                        <h5 class="card-title">{{ pending_analyses }}</h5>
+                        <p class="card-text">Pending Analyses</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <i class="fas fa-cogs fa-2x text-info mb-2"></i>
+                        <h5 class="card-title">{{ processing_analyses }}</h5>
+                        <p class="card-text">Processing</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Analyses -->
+        {% if recent_analyses %}
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-history me-2"></i>Recent Analyses
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        {% for analysis in recent_analyses %}
+                            <div class="col-md-6 mb-3">
+                                <div class="card border">
+                                    <div class="card-body">
+                                        <h6 class="card-title">{{ analysis.paper.title|truncatechars:50 }}</h6>
+                                        <p class="card-text small">{{ analysis.abstract_summary|truncatechars:100 }}</p>
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <small class="text-muted">
+                                                <i class="fas fa-calendar me-1"></i>{{ analysis.created_at|date:"M d, Y" }}
+                                            </small>
+                                            <a href="{% url 'analysis:results' analysis.paper.id %}" class="btn btn-outline-primary btn-sm">
+                                                <i class="fas fa-chart-bar me-1"></i>View Analysis
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        {% else %}
+            <div class="text-center py-5">
+                <i class="fas fa-chart-bar fa-3x text-muted mb-3"></i>
+                <h4 class="text-muted">No analyses yet</h4>
+                <p class="text-muted">Upload papers to start getting AI-powered analysis.</p>
+                <a href="{% url 'papers:upload' %}" class="btn btn-primary">
+                    <i class="fas fa-upload me-1"></i>Upload Paper
+                </a>
+            </div>
+        {% endif %}
+
+        <!-- Quick Actions -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-bolt me-2"></i>Quick Actions
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4 mb-2">
+                        <a href="{% url 'papers:upload' %}" class="btn btn-primary w-100">
+                            <i class="fas fa-upload me-2"></i>Upload New Paper
+                        </a>
+                    </div>
+                    <div class="col-md-4 mb-2">
+                        <a href="{% url 'papers:list' %}" class="btn btn-outline-primary w-100">
+                            <i class="fas fa-list me-2"></i>View All Papers
+                        </a>
+                    </div>
+                    <div class="col-md-4 mb-2">
+                        <a href="{% url 'users:dashboard' %}" class="btn btn-outline-secondary w-100">
+                            <i class="fas fa-tachometer-alt me-2"></i>Main Dashboard
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

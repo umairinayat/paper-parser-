@@ -1,0 +1,185 @@
+{% extends 'base.html' %}
+{% load crispy_forms_tags %}
+
+{% block title %}Search Papers - Research Paper Analyzer{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="mb-0">
+                    <i class="fas fa-search me-2"></i>AI-Powered Paper Search
+                </h3>
+                <p class="text-muted mb-0">Search for research papers using natural language queries</p>
+            </div>
+            <div class="card-body">
+                <form method="post" id="searchForm">
+                    {% csrf_token %}
+                    <div class="mb-4">
+                        <label for="{{ form.query.id_for_label }}" class="form-label">
+                            <strong>What research problem or topic are you looking for?</strong>
+                        </label>
+                        {{ form.query }}
+                        {% if form.query.help_text %}
+                            <div class="form-text">{{ form.query.help_text }}</div>
+                        {% endif %}
+                        {% if form.query.errors %}
+                            <div class="text-danger small">{{ form.query.errors }}</div>
+                        {% endif %}
+                    </div>
+
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <label for="{{ form.max_papers.id_for_label }}" class="form-label">
+                                <strong>Maximum number of papers to analyze</strong>
+                            </label>
+                            {{ form.max_papers }}
+                            {% if form.max_papers.help_text %}
+                                <div class="form-text">{{ form.max_papers.help_text }}</div>
+                            {% endif %}
+                            {% if form.max_papers.errors %}
+                                <div class="text-danger small">{{ form.max_papers.errors }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">
+                                <strong>Analysis Features</strong>
+                            </label>
+                            <div class="form-text">
+                                <ul class="list-unstyled mb-0">
+                                    <li><i class="fas fa-check text-success me-1"></i>Abstract summaries</li>
+                                    <li><i class="fas fa-check text-success me-1"></i>Main findings</li>
+                                    <li><i class="fas fa-check text-success me-1"></i>Methodology analysis</li>
+                                    <li><i class="fas fa-check text-success me-1"></i>Research gaps</li>
+                                    <li><i class="fas fa-check text-success me-1"></i>Future directions</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary btn-lg" id="searchBtn">
+                            <i class="fas fa-search me-2"></i>Search & Analyze Papers
+                        </button>
+                    </div>
+                </form>
+
+                <!-- Loading State -->
+                <div id="loadingState" class="text-center py-5" style="display: none;">
+                    <div class="spinner-border text-primary mb-3" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <h5>Searching and analyzing papers...</h5>
+                    <p class="text-muted">This may take a few minutes depending on the number of papers</p>
+                    <div class="progress mt-3">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                             role="progressbar" style="width: 100%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Examples Section -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-lightbulb me-2"></i>Search Examples
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Healthcare & Medicine</h6>
+                        <ul class="list-unstyled">
+                            <li><i class="fas fa-arrow-right text-primary me-1"></i>"AI in medical diagnosis"</li>
+                            <li><i class="fas fa-arrow-right text-primary me-1"></i>"COVID-19 treatment effectiveness"</li>
+                            <li><i class="fas fa-arrow-right text-primary me-1"></i>"Mental health interventions"</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Technology & AI</h6>
+                        <ul class="list-unstyled">
+                            <li><i class="fas fa-arrow-right text-primary me-1"></i>"Machine learning applications"</li>
+                            <li><i class="fas fa-arrow-right text-primary me-1"></i>"Natural language processing"</li>
+                            <li><i class="fas fa-arrow-right text-primary me-1"></i>"Computer vision in robotics"</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-md-6">
+                        <h6>Environmental Science</h6>
+                        <ul class="list-unstyled">
+                            <li><i class="fas fa-arrow-right text-primary me-1"></i>"Climate change impact"</li>
+                            <li><i class="fas fa-arrow-right text-primary me-1"></i>"Renewable energy solutions"</li>
+                            <li><i class="fas fa-arrow-right text-primary me-1"></i>"Biodiversity conservation"</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Social Sciences</h6>
+                        <ul class="list-unstyled">
+                            <li><i class="fas fa-arrow-right text-primary me-1"></i>"Education technology impact"</li>
+                            <li><i class="fas fa-arrow-right text-primary me-1"></i>"Remote work productivity"</li>
+                            <li><i class="fas fa-arrow-right text-primary me-1"></i>"Social media influence"</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Features Section -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-star me-2"></i>What You'll Get
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4 text-center mb-3">
+                        <i class="fas fa-file-alt fa-2x text-primary mb-2"></i>
+                        <h6>Comprehensive Analysis</h6>
+                        <p class="small text-muted">Detailed extraction of key information from each paper</p>
+                    </div>
+                    <div class="col-md-4 text-center mb-3">
+                        <i class="fas fa-chart-line fa-2x text-success mb-2"></i>
+                        <h6>Pattern Recognition</h6>
+                        <p class="small text-muted">AI identifies trends and relationships between papers</p>
+                    </div>
+                    <div class="col-md-4 text-center mb-3">
+                        <i class="fas fa-download fa-2x text-info mb-2"></i>
+                        <h6>Export Ready</h6>
+                        <p class="small text-muted">Download results as CSV or JSON for further analysis</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(document).ready(function() {
+    $('#searchForm').on('submit', function() {
+        // Show loading state
+        $('#searchBtn').prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>Searching...');
+        $('#loadingState').show();
+        $('.card-body form').hide();
+        
+        // Hide loading state after a delay to show progress
+        setTimeout(function() {
+            $('#loadingState').hide();
+            $('.card-body form').show();
+            $('#searchBtn').prop('disabled', false).html('<i class="fas fa-search me-2"></i>Search & Analyze Papers');
+        }, 3000);
+    });
+    
+    // Example click handlers
+    $('.list-unstyled li').click(function() {
+        var example = $(this).text().replace('→', '').trim();
+        $('#query').val(example);
+    });
+});
+</script>
+{% endblock %} 

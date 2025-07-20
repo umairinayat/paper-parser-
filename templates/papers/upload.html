@@ -1,0 +1,84 @@
+{% extends 'base.html' %}
+{% load crispy_forms_tags %}
+
+{% block title %}Upload Paper - Research Paper Analyzer{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0">
+                    <i class="fas fa-upload me-2"></i>Upload Research Paper
+                </h4>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong>Supported formats:</strong> PDF, DOCX, TXT (Max 50MB)
+                </div>
+
+                <form method="post" enctype="multipart/form-data" id="upload-form">
+                    {% csrf_token %}
+                    {{ form|crispy }}
+                    
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary" id="upload-btn">
+                            <i class="fas fa-upload me-1"></i>Upload Paper
+                        </button>
+                        <a href="{% url 'papers:list' %}" class="btn btn-outline-secondary">
+                            <i class="fas fa-arrow-left me-1"></i>Back to Papers
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Upload Guidelines -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-lightbulb me-2"></i>Upload Guidelines
+                </h5>
+            </div>
+            <div class="card-body">
+                <ul class="list-unstyled">
+                    <li><i class="fas fa-check text-success me-2"></i>Ensure the paper is in a readable format</li>
+                    <li><i class="fas fa-check text-success me-2"></i>PDF files work best for analysis</li>
+                    <li><i class="fas fa-check text-success me-2"></i>Make sure the text is selectable (not scanned images)</li>
+                    <li><i class="fas fa-check text-success me-2"></i>Include complete paper sections (abstract, methods, results, etc.)</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(document).ready(function() {
+    // File input change handler
+    $('#id_file').change(function() {
+        var file = this.files[0];
+        if (file) {
+            // Update title field with filename if empty
+            if (!$('#id_title').val()) {
+                var filename = file.name.replace(/\.[^/.]+$/, "");
+                $('#id_title').val(filename);
+            }
+            
+            // Show file info
+            var fileSize = (file.size / 1024 / 1024).toFixed(2);
+            $('<div class="alert alert-info mt-2">')
+                .html('<i class="fas fa-file me-2"></i>Selected: ' + file.name + ' (' + fileSize + ' MB)')
+                .insertAfter('#id_file');
+        }
+    });
+    
+    // Form submission
+    $('#upload-form').submit(function() {
+        $('#upload-btn').prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i>Uploading...');
+    });
+});
+</script>
+{% endblock %} 

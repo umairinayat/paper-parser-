@@ -1,0 +1,216 @@
+{% extends 'base.html' %}
+{% load paper_filters %}
+
+{% block title %}{{ paper.title }} - Research Paper Analyzer{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <!-- Paper Header -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h4 class="mb-0">
+                        <i class="fas fa-file-alt me-2"></i>{{ paper.title }}
+                    </h4>
+                    <div>
+                        <span class="badge bg-{% if paper.status == 'completed' %}success{% elif paper.status == 'processing' %}warning{% elif paper.status == 'failed' %}danger{% else %}secondary{% endif %} fs-6">
+                            {{ paper.status|title }}
+                        </span>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-8">
+                        {% if paper.authors %}
+                            <p><strong>Authors:</strong> {{ paper.authors|join:", " }}</p>
+                        {% endif %}
+                        
+                        {% if paper.year %}
+                            <p><strong>Year:</strong> {{ paper.year }}</p>
+                        {% endif %}
+                        
+                        {% if paper.journal %}
+                            <p><strong>Journal:</strong> {{ paper.journal }}</p>
+                        {% endif %}
+                        
+                        {% if paper.doi %}
+                            <p><strong>DOI:</strong> <a href="https://doi.org/{{ paper.doi }}" target="_blank">{{ paper.doi }}</a></p>
+                        {% endif %}
+                        
+                        <p><strong>Uploaded:</strong> {{ paper.created_at|date:"F d, Y at g:i A" }}</p>
+                        
+                        {% if paper.processing_time %}
+                            <p><strong>Processing Time:</strong> {{ paper.processing_time|floatformat:2 }} seconds</p>
+                        {% endif %}
+                    </div>
+                    <div class="col-md-4">
+                        <div class="text-center">
+                            <i class="fas fa-file-{{ paper.file_extension }} fa-3x text-primary mb-2"></i>
+                            <p class="text-muted">{{ paper.file.name|get_filename }}</p>
+                            <p class="text-muted">{{ paper.file_size|filesizeformat }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3 mb-2">
+                        <a href="{{ paper.file.url }}" class="btn btn-outline-primary w-100" target="_blank">
+                            <i class="fas fa-download me-1"></i>Download File
+                        </a>
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <a href="{% url 'papers:edit' paper.id %}" class="btn btn-outline-secondary w-100">
+                            <i class="fas fa-edit me-1"></i>Edit Metadata
+                        </a>
+                    </div>
+                    {% if paper.status == 'completed' %}
+                        <div class="col-md-3 mb-2">
+                            <a href="{% url 'analysis:results' paper.id %}" class="btn btn-success w-100">
+                                <i class="fas fa-chart-bar me-1"></i>View Analysis
+                            </a>
+                        </div>
+                        <div class="col-md-3 mb-2">
+                            <div class="dropdown">
+                                <button class="btn btn-outline-info w-100 dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                                    <i class="fas fa-download me-1"></i>Export
+                                </button>
+                                <ul class="dropdown-menu">
+                                    <li><a class="dropdown-item" href="{% url 'analysis:export' paper.id 'json' %}">
+                                        <i class="fas fa-file-code me-1"></i>JSON
+                                    </a></li>
+                                    <li><a class="dropdown-item" href="{% url 'analysis:export' paper.id 'csv' %}">
+                                        <i class="fas fa-file-csv me-1"></i>CSV
+                                    </a></li>
+                                </ul>
+                            </div>
+                        </div>
+                    {% elif paper.status == 'pending' %}
+                        <div class="col-md-3 mb-2">
+                            <button class="btn btn-warning w-100 start-analysis" data-paper-id="{{ paper.id }}">
+                                <i class="fas fa-play me-1"></i>Start Analysis
+                            </button>
+                        </div>
+                    {% elif paper.status == 'processing' %}
+                        <div class="col-md-3 mb-2">
+                            <button class="btn btn-info w-100" disabled>
+                                <i class="fas fa-spinner fa-spin me-1"></i>Processing...
+                            </button>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Analysis Status -->
+        {% if analysis %}
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-chart-bar me-2"></i>Analysis Results
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Abstract Summary</h6>
+                            <p>{{ analysis.abstract_summary|truncatewords:50 }}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Study Design</h6>
+                            <p>{{ analysis.study_design }}</p>
+                        </div>
+                    </div>
+                    <div class="text-center mt-3">
+                        <a href="{% url 'analysis:results' paper.id %}" class="btn btn-primary">
+                            <i class="fas fa-chart-bar me-1"></i>View Full Analysis
+                        </a>
+                    </div>
+                </div>
+            </div>
+        {% endif %}
+
+        <!-- File Information -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-info-circle me-2"></i>File Information
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <p><strong>File Name:</strong> {{ paper.file.name|get_filename }}</p>
+                        <p><strong>File Size:</strong> {{ paper.file_size|filesizeformat }}</p>
+                        <p><strong>File Type:</strong> {{ paper.file_extension|upper }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>Upload Date:</strong> {{ paper.created_at|date:"F d, Y" }}</p>
+                        <p><strong>Last Modified:</strong> {{ paper.updated_at|date:"F d, Y" }}</p>
+                        <p><strong>Status:</strong> 
+                            <span class="badge bg-{% if paper.status == 'completed' %}success{% elif paper.status == 'processing' %}warning{% elif paper.status == 'failed' %}danger{% else %}secondary{% endif %}">
+                                {{ paper.status|title }}
+                            </span>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(document).ready(function() {
+    // Get CSRF token
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+    
+    // Start analysis button handler
+    $('.start-analysis').click(function() {
+        var paperId = $(this).data('paper-id');
+        var button = $(this);
+        
+        $.ajax({
+            url: '/papers/' + paperId + '/start-analysis/',
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            success: function(response) {
+                if (response.status === 'success') {
+                    button.removeClass('btn-warning').addClass('btn-info')
+                        .html('<i class="fas fa-spinner fa-spin me-1"></i>Processing...')
+                        .prop('disabled', true);
+                    setTimeout(function() {
+                        location.reload();
+                    }, 3000);
+                }
+            },
+            error: function() {
+                alert('Failed to start analysis. Please try again.');
+            }
+        });
+    });
+});
+</script>
+{% endblock %} 
