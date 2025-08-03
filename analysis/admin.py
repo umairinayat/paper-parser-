@@ -1,38 +1,51 @@
 from django.contrib import admin
-from .models import PaperAnalysis
+from .models import AnalysisSession, AnalysisSessionPaper, AnalysisResult, AnalysisTemplate
 
-@admin.register(PaperAnalysis)
-class PaperAnalysisAdmin(admin.ModelAdmin):
-    list_display = ('paper', 'has_complete_analysis', 'created_at')
-    list_filter = ('created_at', 'updated_at')
-    search_fields = ('paper__title', 'abstract_summary', 'study_design')
-    readonly_fields = ('created_at', 'updated_at')
-    date_hierarchy = 'created_at'
+
+class AnalysisSessionPaperInline(admin.TabularInline):
+    model = AnalysisSessionPaper
+    extra = 0
+    readonly_fields = ['created_at']
+
+
+@admin.register(AnalysisSession)
+class AnalysisSessionAdmin(admin.ModelAdmin):
+    list_display = ['id', 'user', 'query', 'status', 'papers_count', 'created_at', 'completed_at']
+    list_filter = ['status', 'created_at', 'completed_at']
+    search_fields = ['query', 'user__username']
+    readonly_fields = ['id', 'created_at', 'completed_at']
+    ordering = ['-created_at']
     
     fieldsets = (
-        ('Paper Information', {
+        ('Session Information', {
+            'fields': ('id', 'user', 'query', 'status')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'completed_at')
+        }),
+    )
+    
+    inlines = [AnalysisSessionPaperInline]
+    
+    def papers_count(self, obj):
+        return obj.papers.count()
+    papers_count.short_description = 'Papers'
+
+
+@admin.register(AnalysisResult)
+class AnalysisResultAdmin(admin.ModelAdmin):
+    list_display = ['paper_title', 'analysis_type', 'model_used', 'confidence_score', 'processing_time', 'created_at']
+    list_filter = ['analysis_type', 'model_used', 'confidence_score', 'created_at']
+    search_fields = ['paper__title', 'content']
+    readonly_fields = ['created_at', 'updated_at']
+    ordering = ['-created_at']
+    
+    fieldsets = (
+        ('Paper', {
             'fields': ('paper',)
         }),
-        ('Summary Analysis', {
-            'fields': ('abstract_summary', 'main_findings', 'key_conclusions')
-        }),
-        ('Methodology', {
-            'fields': ('study_design', 'study_objectives', 'theoretical_framework', 'research_question', 'hypotheses_tested')
-        }),
-        ('Intervention & Outcomes', {
-            'fields': ('intervention', 'intervention_effects', 'outcome_measured', 'measurement_methods')
-        }),
-        ('Findings', {
-            'fields': ('primary_outcomes', 'secondary_outcomes', 'statistical_significance', 'effect_sizes')
-        }),
-        ('Critical Analysis', {
-            'fields': ('limitations', 'research_gaps', 'future_research', 'methodological_constraints')
-        }),
-        ('Discussion', {
-            'fields': ('introduction_summary', 'discussion_summary', 'key_arguments', 'implications')
-        }),
-        ('Related Papers', {
-            'fields': ('related_papers', 'confidence_scores')
+        ('Analysis', {
+            'fields': ('analysis_type', 'content', 'confidence_score', 'processing_time', 'model_used')
         }),
         ('Timestamps', {
             'fields': ('created_at', 'updated_at'),
@@ -40,5 +53,28 @@ class PaperAnalysisAdmin(admin.ModelAdmin):
         }),
     )
     
-    def get_queryset(self, request):
-        return super().get_queryset(request).select_related('paper')
+    def paper_title(self, obj):
+        return obj.paper.title if obj.paper else 'N/A'
+    paper_title.short_description = 'Paper Title'
+
+
+@admin.register(AnalysisTemplate)
+class AnalysisTemplateAdmin(admin.ModelAdmin):
+    list_display = ['name', 'analysis_type', 'is_active', 'created_at']
+    list_filter = ['analysis_type', 'is_active', 'created_at']
+    search_fields = ['name', 'description', 'prompt_template']
+    readonly_fields = ['created_at', 'updated_at']
+    ordering = ['name']
+    
+    fieldsets = (
+        ('Template Information', {
+            'fields': ('name', 'description', 'analysis_type', 'is_active')
+        }),
+        ('Content', {
+            'fields': ('prompt_template', 'output_format')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )

@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(myenv/Scripts/pip install django-cors-headers)",
+      "Bash(powershell:*)"
+    ],
+    "deny": []
+  }
+}

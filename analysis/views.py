@@ -2,8 +2,8 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse, HttpResponse
 from django.contrib import messages
-from papers.models import Paper
-from .models import PaperAnalysis
+from papers.models import Paper, PaperAnalysis
+from .models import AnalysisSession, AnalysisResult, AnalysisTemplate
 import json
 import csv
 from io import StringIO
@@ -15,10 +15,12 @@ def analysis_results(request, paper_id):
     """Display detailed analysis results for a paper"""
     paper = get_object_or_404(Paper, id=paper_id, user=request.user)
     
-    try:
+    # Get analysis if it exists
+    analysis = None
+    if hasattr(paper, 'analysis'):
         analysis = paper.analysis
-    except PaperAnalysis.DoesNotExist:
-        analysis = None
+    
+    if not analysis:
         messages.warning(request, 'Analysis not found for this paper.')
     
     context = {
@@ -32,49 +34,38 @@ def export_analysis(request, paper_id, format='json'):
     """Export analysis results in various formats"""
     paper = get_object_or_404(Paper, id=paper_id, user=request.user)
     
-    try:
+    # Get analysis if it exists
+    analysis = None
+    if hasattr(paper, 'analysis'):
         analysis = paper.analysis
-    except PaperAnalysis.DoesNotExist:
+    
+    if not analysis:
         messages.error(request, 'Analysis not found for this paper.')
-        return redirect('paper_detail', paper_id=paper_id)
+        return redirect('papers:detail', paper_id=paper_id)
     
     if format == 'json':
         # Export as JSON
         data = {
             'paper': {
                 'title': paper.title,
-                'authors': paper.authors,
-                'year': paper.year,
+                'authors': [author.name for author in paper.authors.all()],
+                'publication_date': paper.publication_date,
                 'doi': paper.doi,
-                'journal': paper.journal,
+                'journal': paper.journal.name if paper.journal else None,
             },
             'analysis': {
-                'abstract_summary': analysis.abstract_summary,
-                'main_findings': analysis.main_findings,
-                'key_conclusions': analysis.key_conclusions,
-                'study_design': analysis.study_design,
-                'study_objectives': analysis.study_objectives,
-                'theoretical_framework': analysis.theoretical_framework,
-                'research_question': analysis.research_question,
-                'hypotheses_tested': analysis.hypotheses_tested,
-                'intervention': analysis.intervention,
-                'intervention_effects': analysis.intervention_effects,
-                'outcome_measured': analysis.outcome_measured,
-                'measurement_methods': analysis.measurement_methods,
-                'primary_outcomes': analysis.primary_outcomes,
-                'secondary_outcomes': analysis.secondary_outcomes,
-                'statistical_significance': analysis.statistical_significance,
-                'effect_sizes': analysis.effect_sizes,
+                'summary': analysis.summary,
+                'key_findings': analysis.key_findings,
+                'methodology': analysis.methodology,
                 'limitations': analysis.limitations,
-                'research_gaps': analysis.research_gaps,
-                'future_research': analysis.future_research,
-                'methodological_constraints': analysis.methodological_constraints,
-                'introduction_summary': analysis.introduction_summary,
-                'discussion_summary': analysis.discussion_summary,
-                'key_arguments': analysis.key_arguments,
-                'implications': analysis.implications,
-                'related_papers': analysis.related_papers,
-                'confidence_scores': analysis.confidence_scores,
+                'future_work': analysis.future_work,
+                'impact_assessment': analysis.impact_assessment,
+                'methodology_type': analysis.methodology_type,
+                'dataset_info': analysis.dataset_info,
+                'evaluation_metrics': analysis.evaluation_metrics,
+                'model_used': analysis.model_used,
+                'processing_time': analysis.processing_time,
+                'confidence_score': analysis.confidence_score,
             }
         }
         
@@ -97,98 +88,78 @@ def export_analysis(request, paper_id, format='json'):
         
         # Write data
         analysis_fields = [
-            ('Abstract Summary', analysis.abstract_summary),
-            ('Study Design', analysis.study_design),
-            ('Research Question', analysis.research_question),
-            ('Intervention', analysis.intervention),
-            ('Intervention Effects', analysis.intervention_effects),
-            ('Statistical Significance', analysis.statistical_significance),
-            ('Introduction Summary', analysis.introduction_summary),
-            ('Discussion Summary', analysis.discussion_summary),
-        ]
-        
-        for field_name, value in analysis_fields:
-            writer.writerow([field_name, value])
-        
-        # Write list fields
-        list_fields = [
-            ('Main Findings', analysis.main_findings),
-            ('Key Conclusions', analysis.key_conclusions),
-            ('Study Objectives', analysis.study_objectives),
-            ('Hypotheses Tested', analysis.hypotheses_tested),
-            ('Outcome Measured', analysis.outcome_measured),
-            ('Primary Outcomes', analysis.primary_outcomes),
-            ('Secondary Outcomes', analysis.secondary_outcomes),
-            ('Effect Sizes', analysis.effect_sizes),
+            ('Summary', analysis.summary),
+            ('Key Findings', '; '.join(analysis.key_findings) if analysis.key_findings else ''),
+            ('Methodology', analysis.methodology),
             ('Limitations', analysis.limitations),
-            ('Research Gaps', analysis.research_gaps),
-            ('Future Research', analysis.future_research),
-            ('Key Arguments', analysis.key_arguments),
-            ('Implications', analysis.implications),
+            ('Future Work', analysis.future_work),
+            ('Impact Assessment', analysis.impact_assessment),
+            ('Methodology Type', analysis.methodology_type),
+            ('Dataset Info', analysis.dataset_info),
+            ('Evaluation Metrics', json.dumps(analysis.evaluation_metrics) if analysis.evaluation_metrics else ''),
+            ('Model Used', analysis.model_used),
+            ('Processing Time', analysis.processing_time),
+            ('Confidence Score', analysis.confidence_score),
         ]
         
-        for field_name, value_list in list_fields:
-            if value_list:
-                for i, item in enumerate(value_list):
-                    writer.writerow([f'{field_name} {i+1}', item])
-            else:
-                writer.writerow([field_name, ''])
+        for field, value in analysis_fields:
+            writer.writerow([field, value])
         
-        response = HttpResponse(
-            output.getvalue(),
-            content_type='text/csv'
-        )
+        output.seek(0)
+        response = HttpResponse(output.getvalue(), content_type='text/csv')
         response['Content-Disposition'] = f'attachment; filename="{paper.title}_analysis.csv"'
         return response
     
     else:
-        messages.error(request, 'Invalid export format.')
-        return redirect('analysis_results', paper_id=paper_id)
+        messages.error(request, 'Unsupported export format.')
+        return redirect('analysis:results', paper_id=paper_id)
 
 @login_required
 def analysis_dashboard(request):
-    """Dashboard showing all user's analyses with statistics"""
-    user_papers = request.user.paper_set.all()
+    """Display analysis dashboard with statistics"""
+    # Get user's papers with analysis
+    papers_with_analysis = Paper.objects.filter(
+        user=request.user,
+        analysis_status='completed'
+    ).select_related('analysis')
     
-    # Statistics
-    total_papers = user_papers.count()
-    completed_analyses = user_papers.filter(status='completed').count()
-    pending_analyses = user_papers.filter(status='pending').count()
-    processing_analyses = user_papers.filter(status='processing').count()
+    # Get analysis sessions
+    analysis_sessions = AnalysisSession.objects.filter(user=request.user).order_by('-created_at')[:10]
     
-    # Recent analyses
+    # Calculate statistics
+    total_papers = Paper.objects.filter(user=request.user).count()
+    analyzed_papers = papers_with_analysis.count()
+    pending_papers = Paper.objects.filter(user=request.user, analysis_status='pending').count()
+    failed_papers = Paper.objects.filter(user=request.user, analysis_status='failed').count()
+    
+    # Get recent analysis results
     recent_analyses = []
-    for paper in user_papers.filter(status='completed')[:5]:
-        try:
-            recent_analyses.append(paper.analysis)
-        except PaperAnalysis.DoesNotExist:
-            pass
+    for paper in papers_with_analysis[:5]:
+        if hasattr(paper, 'analysis'):
+            recent_analyses.append({
+                'paper': paper,
+                'analysis': paper.analysis
+            })
     
     context = {
         'total_papers': total_papers,
-        'completed_analyses': completed_analyses,
-        'pending_analyses': pending_analyses,
-        'processing_analyses': processing_analyses,
+        'analyzed_papers': analyzed_papers,
+        'pending_papers': pending_papers,
+        'failed_papers': failed_papers,
+        'analysis_sessions': analysis_sessions,
         'recent_analyses': recent_analyses,
     }
+    
     return render(request, 'analysis/dashboard.html', context)
 
 @login_required
 def analysis_status_ajax(request, paper_id):
-    """AJAX endpoint for getting analysis status"""
+    """Get analysis status via AJAX"""
     paper = get_object_or_404(Paper, id=paper_id, user=request.user)
     
-    try:
-        analysis = paper.analysis
-        has_analysis = True
-        analysis_complete = analysis.has_complete_analysis
-    except PaperAnalysis.DoesNotExist:
-        has_analysis = False
-        analysis_complete = False
-    
     return JsonResponse({
-        'status': paper.status,
-        'has_analysis': has_analysis,
-        'analysis_complete': analysis_complete,
+        'status': paper.analysis_status,
         'processing_time': paper.processing_time,
+        'error_message': paper.error_message,
+        'has_analysis': hasattr(paper, 'analysis'),
     })

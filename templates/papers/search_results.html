@@ -15,17 +15,19 @@
                             <i class="fas fa-search me-2"></i>Search Results
                         </h3>
                         <p class="text-muted mb-0">
-                            Query: <strong>"{{ query }}"</strong> | 
-                            Papers found: <strong>{{ papers_count }}</strong>
+                            {% if search_query %}
+                                Query: <strong>"{{ search_query.query }}"</strong> | 
+                            {% endif %}
+                            Papers found: <strong>{{ total_papers }}</strong>
                         </p>
                     </div>
                     <div class="btn-group">
                         <a href="{% url 'papers:export_csv' %}" class="btn btn-outline-success">
                             <i class="fas fa-file-csv me-1"></i>Export CSV
                         </a>
-                        <a href="{% url 'papers:export_json' %}" class="btn btn-outline-info">
+                        <!-- <a href="{% url 'papers:export_json' %}" class="btn btn-outline-info">
                             <i class="fas fa-file-code me-1"></i>Export JSON
-                        </a>
+                        </a> -->
                         <a href="{% url 'papers:search' %}" class="btn btn-outline-primary">
                             <i class="fas fa-search me-1"></i>New Search
                         </a>
@@ -34,25 +36,22 @@
             </div>
         </div>
 
-        <!-- Analysis Summary -->
-        {% if analysis_summary %}
+        <!-- Source Statistics -->
+        {% if source_stats %}
         <div class="card mb-4">
             <div class="card-header">
                 <h5 class="mb-0">
-                    <i class="fas fa-chart-bar me-2"></i>Analysis Summary
+                    <i class="fas fa-chart-bar me-2"></i>Search Statistics
                 </h5>
             </div>
             <div class="card-body">
                 <div class="row">
-                    <div class="col-md-8">
-                        <p class="lead">{{ analysis_summary|truncatewords:100 }}</p>
+                    {% for source, count in source_stats.items %}
+                    <div class="col-md-3 text-center">
+                        <div class="display-6 text-primary">{{ count }}</div>
+                        <p class="text-muted">{{ source|title }}</p>
                     </div>
-                    <div class="col-md-4">
-                        <div class="text-center">
-                            <div class="display-4 text-primary">{{ papers_count }}</div>
-                            <p class="text-muted">Papers Analyzed</p>
-                        </div>
-                    </div>
+                    {% endfor %}
                 </div>
             </div>
         </div>
@@ -66,9 +65,9 @@
                 </h5>
             </div>
             <div class="card-body">
-                {% if papers %}
+                {% if page_obj.object_list %}
                     <div class="row">
-                        {% for paper in papers %}
+                        {% for paper in page_obj.object_list %}
                             <div class="col-lg-6 mb-4">
                                 <div class="card h-100 border">
                                     <div class="card-header bg-light">
@@ -85,7 +84,7 @@
                                             <div class="col-6 text-end">
                                                 <small class="text-muted">
                                                     <i class="fas fa-calendar me-1"></i>
-                                                    {{ paper.year|default:"N/A" }}
+                                                    {{ paper.publication_date.year|default:"N/A" }}
                                                 </small>
                                             </div>
                                         </div>
@@ -94,36 +93,70 @@
                                             {{ paper.abstract|truncatewords:30 }}
                                         </p>
                                         
-                                        <!-- Extracted Information -->
-                                        {% if paper.main_findings %}
+                                        <!-- Analysis Information -->
+                                        {% if paper.analysis %}
                                         <div class="mb-2">
-                                            <strong class="small text-success">Main Findings:</strong>
-                                            <p class="small mb-1">{{ paper.main_findings|truncatewords:20 }}</p>
+                                            <strong class="small text-success">Key Findings:</strong>
+                                            <p class="small mb-1">{{ paper.analysis.key_findings|truncatewords:20 }}</p>
                                         </div>
-                                        {% endif %}
                                         
-                                        {% if paper.methodology %}
+                                        {% if paper.analysis.methodology %}
                                         <div class="mb-2">
                                             <strong class="small text-info">Methodology:</strong>
-                                            <p class="small mb-1">{{ paper.methodology|truncatewords:15 }}</p>
+                                            <p class="small mb-1">{{ paper.analysis.methodology|truncatewords:15 }}</p>
                                         </div>
                                         {% endif %}
-                                        
-                                        {% if paper.research_gaps %}
-                                        <div class="mb-2">
-                                            <strong class="small text-warning">Research Gaps:</strong>
-                                            <p class="small mb-1">{{ paper.research_gaps|truncatewords:15 }}</p>
-                                        </div>
                                         {% endif %}
                                         
-                                        <div class="mt-auto">
-                                            <span class="badge bg-secondary">{{ paper.source|default:"Unknown" }}</span>
+                                        <div class="mt-auto d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <span class="badge bg-secondary">{{ paper.source|default:"Unknown" }}</span>
+                                                {% if paper.citation_count %}
+                                                    <span class="badge bg-info">{{ paper.citation_count }} citations</span>
+                                                {% endif %}
+                                            </div>
+                                            <div>
+                                                <a href="{% url 'papers:detail' paper.id %}" class="btn btn-sm btn-outline-primary">
+                                                    <i class="fas fa-eye"></i> View
+                                                </a>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
                         {% endfor %}
                     </div>
+                    
+                    <!-- Pagination -->
+                    {% if page_obj.has_other_pages %}
+                    <nav aria-label="Search results pagination">
+                        <ul class="pagination justify-content-center">
+                            {% if page_obj.has_previous %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}">Previous</a>
+                                </li>
+                            {% endif %}
+                            
+                            {% for num in page_obj.paginator.page_range %}
+                                {% if page_obj.number == num %}
+                                    <li class="page-item active">
+                                        <span class="page-link">{{ num }}</span>
+                                    </li>
+                                {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                                    <li class="page-item">
+                                        <a class="page-link" href="?page={{ num }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}">{{ num }}</a>
+                                    </li>
+                                {% endif %}
+                            {% endfor %}
+                            
+                            {% if page_obj.has_next %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?page={{ page_obj.next_page_number }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}">Next</a>
+                                </li>
+                            {% endif %}
+                        </ul>
+                    </nav>
+                    {% endif %}
                 {% else %}
                     <div class="text-center py-5">
                         <i class="fas fa-search fa-3x text-muted mb-3"></i>
@@ -137,48 +170,27 @@
             </div>
         </div>
 
-        <!-- Detailed Analysis -->
-        {% if analysis_result.papers_analyzed %}
+        <!-- Recent Searches -->
+        {% if search_queries %}
         <div class="card mt-4">
             <div class="card-header">
                 <h5 class="mb-0">
-                    <i class="fas fa-microscope me-2"></i>Detailed Analysis
+                    <i class="fas fa-history me-2"></i>Recent Searches
                 </h5>
             </div>
             <div class="card-body">
-                <div class="row">
-                    <div class="col-md-6">
-                        <h6>Key Themes Identified</h6>
-                        <ul class="list-unstyled">
-                            {% if analysis_result.themes %}
-                                {% for theme in analysis_result.themes %}
-                                    <li><i class="fas fa-check text-success me-1"></i>{{ theme }}</li>
-                                {% endfor %}
-                            {% else %}
-                                <li class="text-muted">No specific themes identified</li>
-                            {% endif %}
-                        </ul>
+                {% for query in search_queries %}
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <div>
+                            <strong>{{ query.query|truncatechars:60 }}</strong>
+                            <small class="text-muted d-block">{{ query.created_at|timesince }} ago • {{ query.results_count }} results</small>
+                        </div>
+                        <button class="btn btn-sm btn-outline-primary" onclick="window.location.href='{% url 'papers:search_results' %}?search_id={{ query.id }}'">
+                            View Results
+                        </button>
                     </div>
-                    <div class="col-md-6">
-                        <h6>Research Gaps</h6>
-                        <ul class="list-unstyled">
-                            {% if analysis_result.research_gaps %}
-                                {% for gap in analysis_result.research_gaps %}
-                                    <li><i class="fas fa-exclamation-triangle text-warning me-1"></i>{{ gap }}</li>
-                                {% endfor %}
-                            {% else %}
-                                <li class="text-muted">No research gaps identified</li>
-                            {% endif %}
-                        </ul>
-                    </div>
-                </div>
-                
-                {% if analysis_result.future_research %}
-                <div class="mt-3">
-                    <h6>Future Research Directions</h6>
-                    <p class="small">{{ analysis_result.future_research }}</p>
-                </div>
-                {% endif %}
+                    {% if not forloop.last %}<hr>{% endif %}
+                {% endfor %}
             </div>
         </div>
         {% endif %}
@@ -202,9 +214,9 @@
                     <div class="col-md-6">
                         <h6>JSON Export</h6>
                         <p class="small text-muted">Download complete analysis data in JSON format for programmatic use.</p>
-                        <a href="{% url 'papers:export_json' %}" class="btn btn-info">
+                        <!-- <a href="{% url 'papers:export_json' %}" class="btn btn-info">
                             <i class="fas fa-file-code me-1"></i>Download JSON
-                        </a>
+                        </a> -->
                     </div>
                 </div>
             </div>
