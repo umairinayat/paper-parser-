@@ -54,3 +54,4 @@ uploads/
 # API keys and secrets
 .env
 secrets.json
+.claude/ 
