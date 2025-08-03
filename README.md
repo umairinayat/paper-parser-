@@ -32,8 +32,8 @@ A comprehensive Django-based web application for searching, analyzing, and manag
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/research-paper-analyzer.git
-   cd research-paper-analyzer
+   git clone (https://github.com/umairinayat/paper-parser-.git)
+   cd paper-parser-
    ```
 
 2. **Create virtual environment**
@@ -56,8 +56,7 @@ A comprehensive Django-based web application for searching, analyzing, and manag
    SECRET_KEY=your-secret-key-here
    DEBUG=True
    GROQ_API_KEY=your-groq-api-key
-   GOOGLE_API_KEY=your-google-api-key
-   GOOGLE_CSE_ID=your-google-cse-id
+  
    ```
 
 5. **Run migrations**
@@ -86,18 +85,6 @@ A comprehensive Django-based web application for searching, analyzing, and manag
 2. Get your API key
 3. Add to `.env` file: `GROQ_API_KEY=your-key`
 
-### Google Custom Search API (Optional)
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Enable Custom Search API
-3. Create API key
-4. Set up Custom Search Engine at [Google Programmable Search Engine](https://programmablesearchengine.google.com/)
-5. Add to `.env` file:
-   ```env
-   GOOGLE_API_KEY=your-api-key
-   GOOGLE_CSE_ID=your-search-engine-id
-   ```
-
-## Usage
 
 ### Searching Papers
 1. Navigate to "Search Papers" in the navigation
