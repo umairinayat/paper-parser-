@@ -1,0 +1,649 @@
+{% extends 'base.html' %}
+{% load paper_filters %}
+{% load static %}
+
+{% block title %}My Papers - Research Analyzer{% endblock %}
+
+{% block extra_css %}
+<style>
+    :root {
+        --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        --success-gradient: linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%);
+        --warning-gradient: linear-gradient(135deg, #ffeaa7 0%, #fab1a0 100%);
+        --danger-gradient: linear-gradient(135deg, #fd79a8 0%, #e84393 100%);
+        --card-shadow: 0 8px 25px rgba(0,0,0,0.1);
+        --hover-shadow: 0 12px 35px rgba(0,0,0,0.15);
+    }
+
+    .papers-header {
+        background: var(--primary-gradient);
+        color: white;
+        border-radius: 20px;
+        padding: 2rem;
+        margin-bottom: 2rem;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .papers-header::before {
+        content: '';
+        position: absolute;
+        top: -30%;
+        right: -10%;
+        width: 150px;
+        height: 150px;
+        background: rgba(255,255,255,0.1);
+        border-radius: 50%;
+        animation: float 4s ease-in-out infinite;
+    }
+
+    @keyframes float {
+        0%, 100% { transform: translateY(0px) rotate(0deg); }
+        50% { transform: translateY(-15px) rotate(10deg); }
+    }
+
+    .search-card {
+        background: white;
+        border-radius: 15px;
+        box-shadow: var(--card-shadow);
+        border: none;
+        overflow: hidden;
+        margin-bottom: 2rem;
+    }
+
+    .search-card .card-header {
+        background: linear-gradient(135deg, #f8f9fc 0%, #e9ecef 100%);
+        border: none;
+        padding: 1.5rem;
+    }
+
+    .paper-card {
+        background: white;
+        border-radius: 15px;
+        box-shadow: var(--card-shadow);
+        border: none;
+        transition: all 0.3s ease;
+        height: 100%;
+        overflow: hidden;
+        position: relative;
+    }
+
+    .paper-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 4px;
+        background: var(--primary-gradient);
+    }
+
+    .paper-card:hover {
+        transform: translateY(-8px);
+        box-shadow: var(--hover-shadow);
+    }
+
+    .paper-card .card-body {
+        padding: 1.5rem;
+        height: calc(100% - 60px);
+    }
+
+    .paper-title {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: #2d3436;
+        margin-bottom: 1rem;
+        line-height: 1.3;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+
+    .paper-meta {
+        color: #636e72;
+        font-size: 0.85rem;
+        margin-bottom: 0.8rem;
+    }
+
+    .paper-meta i {
+        width: 16px;
+        text-align: center;
+        margin-right: 0.5rem;
+    }
+
+    .status-badge {
+        position: absolute;
+        top: 1rem;
+        right: 1rem;
+        padding: 0.4rem 0.8rem;
+        border-radius: 20px;
+        font-size: 0.7rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        border: none;
+    }
+
+    .status-completed {
+        background: var(--success-gradient);
+        color: white;
+    }
+
+    .status-processing {
+        background: var(--primary-gradient);
+        color: white;
+    }
+
+    .status-pending {
+        background: var(--warning-gradient);
+        color: white;
+    }
+
+    .status-failed {
+        background: var(--danger-gradient);
+        color: white;
+    }
+
+    .paper-actions {
+        padding: 1rem 1.5rem;
+        background: #f8f9fc;
+        border-top: 1px solid #e9ecef;
+    }
+
+    .action-btn {
+        background: white;
+        border: 2px solid #e9ecef;
+        border-radius: 10px;
+        color: #495057;
+        font-weight: 600;
+        transition: all 0.3s ease;
+        flex: 1;
+        margin: 0 0.25rem;
+    }
+
+    .action-btn:hover {
+        border-color: #667eea;
+        color: #667eea;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.2);
+    }
+
+    .action-btn.primary {
+        background: var(--primary-gradient);
+        border-color: transparent;
+        color: white;
+    }
+
+    .action-btn.primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+    }
+
+    .filter-chips {
+        display: flex;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+        flex-wrap: wrap;
+    }
+
+    .filter-chip {
+        background: #e3f2fd;
+        color: #1976d2;
+        border: none;
+        padding: 0.5rem 1rem;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        transition: all 0.3s ease;
+        cursor: pointer;
+    }
+
+    .filter-chip:hover, .filter-chip.active {
+        background: #1976d2;
+        color: white;
+        transform: scale(1.05);
+    }
+
+    .papers-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 4rem 2rem;
+        color: #636e72;
+        background: white;
+        border-radius: 15px;
+        box-shadow: var(--card-shadow);
+    }
+
+    .empty-state i {
+        font-size: 5rem;
+        margin-bottom: 1.5rem;
+        opacity: 0.3;
+        background: var(--primary-gradient);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+
+    .pagination-modern {
+        display: flex;
+        justify-content: center;
+        gap: 0.5rem;
+        margin: 2rem 0;
+    }
+
+    .pagination-modern .page-link {
+        border: none;
+        border-radius: 10px;
+        background: white;
+        color: #667eea;
+        padding: 0.75rem 1rem;
+        font-weight: 600;
+        transition: all 0.3s ease;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .pagination-modern .page-link:hover {
+        background: #667eea;
+        color: white;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+    }
+
+    .pagination-modern .page-item.active .page-link {
+        background: var(--primary-gradient);
+        color: white;
+    }
+
+    .search-input {
+        border: 2px solid #e9ecef;
+        border-radius: 12px;
+        padding: 0.75rem 1rem;
+        transition: all 0.3s ease;
+    }
+
+    .search-input:focus {
+        border-color: #667eea;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+
+    .btn-gradient {
+        background: var(--primary-gradient);
+        border: none;
+        border-radius: 12px;
+        color: white;
+        padding: 0.75rem 1.5rem;
+        font-weight: 600;
+        transition: all 0.3s ease;
+    }
+
+    .btn-gradient:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(102, 126, 234, 0.3);
+        color: white;
+    }
+
+    .stats-bar {
+        background: white;
+        border-radius: 15px;
+        padding: 1rem 1.5rem;
+        margin-bottom: 1rem;
+        box-shadow: var(--card-shadow);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .stat-item {
+        text-align: center;
+        flex: 1;
+    }
+
+    .stat-number {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #667eea;
+        display: block;
+    }
+
+    .stat-label {
+        font-size: 0.8rem;
+        color: #636e72;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    @media (max-width: 768px) {
+        .papers-grid {
+            grid-template-columns: 1fr;
+        }
+        
+        .papers-header {
+            padding: 1.5rem;
+        }
+        
+        .stats-bar {
+            flex-direction: column;
+            gap: 1rem;
+        }
+        
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            text-align: left;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header Section -->
+    <div class="papers-header">
+        <div class="row align-items-center">
+            <div class="col-lg-8">
+                <h1 class="mb-2">
+                    <i class="fas fa-folder-open me-3"></i>My Research Collection
+                </h1>
+                <p class="mb-3 opacity-90">
+                    Manage and explore your uploaded research papers with AI-powered analysis
+                </p>
+                <a href="{% url 'papers:upload' %}" class="btn btn-light btn-lg">
+                    <i class="fas fa-plus me-2"></i>Upload New Paper
+                </a>
+            </div>
+            <div class="col-lg-4 text-center">
+                <i class="fas fa-brain" style="font-size: 4rem; opacity: 0.7;"></i>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistics Bar -->
+    {% if page_obj %}
+    <div class="stats-bar">
+        <div class="stat-item">
+            <div>
+                <span class="stat-number">{{ page_obj.paginator.count }}</span>
+                <span class="stat-label">Total Papers</span>
+            </div>
+        </div>
+        <div class="stat-item">
+            <div>
+                <span class="stat-number">{{ completed_count|default:0 }}</span>
+                <span class="stat-label">Analyzed</span>
+            </div>
+        </div>
+        <div class="stat-item">
+            <div>
+                <span class="stat-number">{{ processing_count|default:0 }}</span>
+                <span class="stat-label">Processing</span>
+            </div>
+        </div>
+        <div class="stat-item">
+            <div>
+                <span class="stat-number">{{ pending_count|default:0 }}</span>
+                <span class="stat-label">Pending</span>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Search and Filter -->
+    <div class="search-card">
+        <div class="card-header">
+            <h5 class="mb-0">
+                <i class="fas fa-search me-2"></i>Search & Filter
+            </h5>
+        </div>
+        <div class="card-body">
+            <form method="get" class="row g-3">
+                <div class="col-md-6">
+                    <label for="search" class="form-label fw-bold">Search Papers</label>
+                    <input type="text" class="form-control search-input" id="search" name="search" 
+                           value="{{ search_query }}" placeholder="Search by title, authors, or content...">
+                </div>
+                <div class="col-md-4">
+                    <label for="status" class="form-label fw-bold">Analysis Status</label>
+                    <select class="form-select search-input" id="status" name="status">
+                        <option value="">All Status</option>
+                        <option value="pending" {% if status_filter == 'pending' %}selected{% endif %}>Pending</option>
+                        <option value="processing" {% if status_filter == 'processing' %}selected{% endif %}>Processing</option>
+                        <option value="completed" {% if status_filter == 'completed' %}selected{% endif %}>Completed</option>
+                        <option value="failed" {% if status_filter == 'failed' %}selected{% endif %}>Failed</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label fw-bold">&nbsp;</label>
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-gradient">
+                            <i class="fas fa-search me-1"></i>Search
+                        </button>
+                    </div>
+                </div>
+            </form>
+
+            <!-- Quick Filter Chips -->
+            <div class="filter-chips mt-3">
+                <button class="filter-chip {% if not status_filter %}active{% endif %}" onclick="filterByStatus('')">
+                    <i class="fas fa-list me-1"></i>All Papers
+                </button>
+                <button class="filter-chip {% if status_filter == 'completed' %}active{% endif %}" onclick="filterByStatus('completed')">
+                    <i class="fas fa-check-circle me-1"></i>Completed
+                </button>
+                <button class="filter-chip {% if status_filter == 'processing' %}active{% endif %}" onclick="filterByStatus('processing')">
+                    <i class="fas fa-spinner me-1"></i>Processing
+                </button>
+                <button class="filter-chip {% if status_filter == 'pending' %}active{% endif %}" onclick="filterByStatus('pending')">
+                    <i class="fas fa-clock me-1"></i>Pending
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Papers Grid -->
+    {% if page_obj %}
+        <div class="papers-grid">
+            {% for paper in page_obj %}
+                <div class="paper-card">
+                    <div class="status-badge status-{{ paper.analysis_status }}">
+                        {{ paper.analysis_status }}
+                    </div>
+                    
+                    <div class="card-body">
+                        <h6 class="paper-title">{{ paper.title }}</h6>
+                        
+                        {% if paper.authors %}
+                            <div class="paper-meta">
+                                <i class="fas fa-users"></i>
+                                {{ paper.authors|join:", "|truncatechars:60 }}
+                            </div>
+                        {% endif %}
+                        
+                        <div class="paper-meta">
+                            <i class="fas fa-calendar"></i>
+                            Uploaded {{ paper.created_at|date:"M d, Y" }}
+                        </div>
+                        
+                        {% if paper.year %}
+                            <div class="paper-meta">
+                                <i class="fas fa-calendar-alt"></i>
+                                Published {{ paper.year }}
+                            </div>
+                        {% endif %}
+                        
+                        {% if paper.processing_time %}
+                            <div class="paper-meta">
+                                <i class="fas fa-stopwatch"></i>
+                                Processed in {{ paper.processing_time|floatformat:1 }}s
+                            </div>
+                        {% endif %}
+
+                        <!-- Tags -->
+                        {% if paper.tags.all %}
+                            <div class="mt-3">
+                                {% for tag in paper.tags.all %}
+                                    <span class="badge rounded-pill" style="background-color: {{ tag.color }}; color: white; margin-right: 0.3rem;">
+                                        {{ tag.name }}
+                                    </span>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="paper-actions">
+                        <div class="d-flex">
+                            <a href="{% url 'papers:qa' paper.id %}" class="action-btn primary">
+                                <i class="fas fa-comments me-1"></i>Q&A
+                            </a>
+                            <a href="{% url 'papers:detail' paper.id %}" class="action-btn">
+                                <i class="fas fa-eye me-1"></i>Details
+                            </a>
+                            {% if paper.analysis_status == 'completed' %}
+                                <a href="{% url 'papers:export_qa' paper.id %}" class="action-btn" title="Export Q&A">
+                                    <i class="fas fa-download me-1"></i>Export
+                                </a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+
+        <!-- Modern Pagination -->
+        {% if page_obj.has_other_pages %}
+            <nav aria-label="Papers pagination">
+                <ul class="pagination pagination-modern">
+                    {% if page_obj.has_previous %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page=1{% if search_query %}&search={{ search_query }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}">
+                                <i class="fas fa-angle-double-left"></i>
+                            </a>
+                        </li>
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}">
+                                <i class="fas fa-angle-left"></i>
+                            </a>
+                        </li>
+                    {% endif %}
+
+                    {% for num in page_obj.paginator.page_range %}
+                        {% if page_obj.number == num %}
+                            <li class="page-item active">
+                                <span class="page-link">{{ num }}</span>
+                            </li>
+                        {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ num }}{% if search_query %}&search={{ search_query }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}">{{ num }}</a>
+                            </li>
+                        {% endif %}
+                    {% endfor %}
+
+                    {% if page_obj.has_next %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}">
+                                <i class="fas fa-angle-right"></i>
+                            </a>
+                        </li>
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{% if search_query %}&search={{ search_query }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}">
+                                <i class="fas fa-angle-double-right"></i>
+                            </a>
+                        </li>
+                    {% endif %}
+                </ul>
+            </nav>
+        {% endif %}
+
+    {% else %}
+        <div class="empty-state">
+            <i class="fas fa-file-alt"></i>
+            <h3>No Papers Found</h3>
+            <p class="mb-4">
+                {% if search_query or status_filter %}
+                    No papers match your search criteria. Try adjusting your filters.
+                {% else %}
+                    Start building your research collection by uploading your first paper.
+                {% endif %}
+            </p>
+            <a href="{% url 'papers:upload' %}" class="btn btn-gradient btn-lg">
+                <i class="fas fa-upload me-2"></i>Upload Your First Paper
+            </a>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Animate cards on scroll
+    const cards = document.querySelectorAll('.paper-card');
+    
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach((entry, index) => {
+            if (entry.isIntersecting) {
+                setTimeout(() => {
+                    entry.target.style.opacity = '1';
+                    entry.target.style.transform = 'translateY(0)';
+                }, index * 100);
+            }
+        });
+    });
+
+    cards.forEach(card => {
+        card.style.opacity = '0';
+        card.style.transform = 'translateY(20px)';
+        card.style.transition = 'all 0.6s ease';
+        observer.observe(card);
+    });
+
+    // Search form enhancements
+    const searchInput = document.getElementById('search');
+    const searchForm = searchInput.closest('form');
+    
+    // Auto-submit on filter change
+    document.getElementById('status').addEventListener('change', function() {
+        searchForm.submit();
+    });
+
+    // Search suggestions (you can enhance this with AJAX)
+    searchInput.addEventListener('input', function() {
+        // Add search suggestions logic here if needed
+    });
+});
+
+// Filter functions
+function filterByStatus(status) {
+    const url = new URL(window.location);
+    if (status) {
+        url.searchParams.set('status', status);
+    } else {
+        url.searchParams.delete('status');
+    }
+    url.searchParams.delete('page'); // Reset to first page
+    window.location.href = url.toString();
+}
+
+// Keyboard shortcuts
+document.addEventListener('keydown', function(e) {
+    // Ctrl/Cmd + K to focus search
+    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        document.getElementById('search').focus();
+    }
+    
+    // Ctrl/Cmd + U to upload new paper
+    if ((e.ctrlKey || e.metaKey) && e.key === 'u') {
+        e.preventDefault();
+        window.location.href = "{% url 'papers:upload' %}";
+    }
+});
+</script>
+{% endblock %}

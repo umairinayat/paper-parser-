@@ -1,0 +1,253 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Upload Paper - Research Analyzer{% endblock %}
+
+{% block extra_css %}
+<style>
+    .upload-area {
+        border: 3px dashed #007bff;
+        border-radius: 15px;
+        padding: 50px 20px;
+        text-align: center;
+        background: #f8f9ff;
+        margin: 30px 0;
+        transition: all 0.3s ease;
+    }
+    
+    .upload-area:hover {
+        border-color: #0056b3;
+        background: #e3f2fd;
+    }
+    
+    .upload-area.dragover {
+        border-color: #28a745;
+        background: #d4edda;
+    }
+    
+    .upload-icon {
+        font-size: 4rem;
+        color: #007bff;
+        margin-bottom: 20px;
+    }
+    
+    .file-info {
+        margin-top: 15px;
+        padding: 10px;
+        background: #e9ecef;
+        border-radius: 8px;
+        display: none;
+    }
+    
+    .supported-formats {
+        background: white;
+        border-radius: 10px;
+        padding: 20px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0">
+                        <i class="fas fa-upload me-2"></i>Upload Research Paper
+                    </h4>
+                </div>
+                
+                <div class="card-body">
+                    <p class="text-muted mb-4">
+                        Upload your research paper and start asking questions using our AI-powered Q&A system.
+                        Just select your file - that's all you need!
+                    </p>
+                    
+                    <form method="post" enctype="multipart/form-data" id="upload-form">
+                        {% csrf_token %}
+                        
+                        <div class="upload-area" id="upload-area">
+                            <div class="upload-icon">
+                                <i class="fas fa-cloud-upload-alt"></i>
+                            </div>
+                            <h5>Drag & Drop your paper here</h5>
+                            <p class="text-muted mb-3">or click to browse files</p>
+                            
+                            {{ form.file }}
+                            
+                            <div class="file-info" id="file-info">
+                                <i class="fas fa-file-pdf text-primary me-2"></i>
+                                <span id="file-name"></span>
+                                <small class="text-muted d-block" id="file-size"></small>
+                            </div>
+                        </div>
+                        
+                        {% if form.file.errors %}
+                            <div class="alert alert-danger">
+                                {{ form.file.errors }}
+                            </div>
+                        {% endif %}
+                        
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary btn-lg" id="upload-btn" disabled>
+                                <i class="fas fa-upload me-2"></i>Upload & Start Q&A
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            
+            <!-- Supported Formats Info -->
+            <div class="supported-formats mt-4">
+                <h5><i class="fas fa-info-circle text-primary me-2"></i>Supported Formats</h5>
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="text-center p-3">
+                            <i class="fas fa-file-pdf fa-2x text-danger mb-2"></i>
+                            <h6>PDF Files</h6>
+                            <small class="text-muted">Research papers, articles</small>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="text-center p-3">
+                            <i class="fas fa-file-word fa-2x text-primary mb-2"></i>
+                            <h6>Word Documents</h6>
+                            <small class="text-muted">.docx format</small>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="text-center p-3">
+                            <i class="fas fa-file-alt fa-2x text-success mb-2"></i>
+                            <h6>Text Files</h6>
+                            <small class="text-muted">Plain text documents</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="text-center mt-3">
+                    <small class="text-muted">
+                        <strong>Maximum file size:</strong> 50MB
+                    </small>
+                </div>
+            </div>
+            
+            <!-- Quick Start Guide -->
+            <div class="mt-4">
+                <h5><i class="fas fa-rocket text-primary me-2"></i>How it works</h5>
+                <div class="row">
+                    <div class="col-md-4 text-center mb-3">
+                        <div class="p-3">
+                            <i class="fas fa-upload fa-2x text-primary mb-2"></i>
+                            <h6>1. Upload</h6>
+                            <small class="text-muted">Simply upload your research paper</small>
+                        </div>
+                    </div>
+                    <div class="col-md-4 text-center mb-3">
+                        <div class="p-3">
+                            <i class="fas fa-cogs fa-2x text-warning mb-2"></i>
+                            <h6>2. Process</h6>
+                            <small class="text-muted">AI extracts and indexes content</small>
+                        </div>
+                    </div>
+                    <div class="col-md-4 text-center mb-3">
+                        <div class="p-3">
+                            <i class="fas fa-comments fa-2x text-success mb-2"></i>
+                            <h6>3. Ask Questions</h6>
+                            <small class="text-muted">Get intelligent answers about your paper</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const uploadArea = document.getElementById('upload-area');
+    const fileInput = document.getElementById('{{ form.file.id_for_label }}');
+    const fileInfo = document.getElementById('file-info');
+    const fileName = document.getElementById('file-name');
+    const fileSize = document.getElementById('file-size');
+    const uploadBtn = document.getElementById('upload-btn');
+    
+    // Style the file input (hide it)
+    fileInput.style.display = 'none';
+    
+    // Click to upload
+    uploadArea.addEventListener('click', function() {
+        fileInput.click();
+    });
+    
+    // File selection handler
+    fileInput.addEventListener('change', function() {
+        handleFileSelect(this.files[0]);
+    });
+    
+    // Drag and drop handlers
+    uploadArea.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        uploadArea.classList.add('dragover');
+    });
+    
+    uploadArea.addEventListener('dragleave', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        uploadArea.classList.remove('dragover');
+    });
+    
+    uploadArea.addEventListener('drop', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        uploadArea.classList.remove('dragover');
+        
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            fileInput.files = files;
+            handleFileSelect(files[0]);
+        }
+    });
+    
+    function handleFileSelect(file) {
+        if (file) {
+            fileName.textContent = file.name;
+            fileSize.textContent = formatFileSize(file.size);
+            fileInfo.style.display = 'block';
+            uploadBtn.disabled = false;
+            
+            // Update icon based on file type
+            const icon = fileInfo.querySelector('i');
+            const ext = file.name.split('.').pop().toLowerCase();
+            
+            if (ext === 'pdf') {
+                icon.className = 'fas fa-file-pdf text-danger me-2';
+            } else if (ext === 'docx') {
+                icon.className = 'fas fa-file-word text-primary me-2';
+            } else if (ext === 'txt') {
+                icon.className = 'fas fa-file-alt text-success me-2';
+            } else {
+                icon.className = 'fas fa-file text-secondary me-2';
+            }
+        }
+    }
+    
+    function formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+    
+    // Form submission handler
+    document.getElementById('upload-form').addEventListener('submit', function() {
+        uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Uploading...';
+        uploadBtn.disabled = true;
+    });
+});
+</script>
+{% endblock %}

@@ -11,47 +11,48 @@ from django.utils import timezone
 import csv
 import json
 
-from .models import Paper, PaperAnalysis, SearchQuery
+from .models import Paper, PaperAnalysis, SearchQuery, QASession, PaperQuestion, QuestionTemplate, PaperTag, ResearchNote
 from .forms import PaperUploadForm, PaperEditForm, PaperSearchForm
+from .forms_simple import SimpleUploadForm
 from .services.unified_search_service import UnifiedSearchService, SearchFilter
+from .services.rag_service import RAGService
+from .services.comparative_analysis_service import ComparativeAnalysisService
 
 # Set up logging
 logger = logging.getLogger(__name__)
 
 @login_required
 def paper_upload(request):
-    """Handle paper upload with file validation"""
+    """Handle simplified paper upload - just file required"""
     if request.method == 'POST':
-        form = PaperUploadForm(request.POST, request.FILES)
+        form = SimpleUploadForm(request.POST, request.FILES)
         if form.is_valid():
             paper = form.save(commit=False)
             paper.user = request.user
             if paper.file:
                 paper.file_size = paper.file.size
             
-            # Extract basic metadata from filename if title is not provided
-            if not paper.title and paper.file:
-                paper.title = os.path.splitext(paper.file.name)[0].split('/')[-1]
-            
             paper.save()
             
-            # Handle author assignment if we have stored authors
-            if hasattr(paper, '_author_list'):
-                paper.authors.set(paper._author_list)
-            
-            messages.success(request, f'Paper "{paper.title}" uploaded successfully! Analysis will begin shortly.')
-            return redirect('papers:detail', paper_id=paper.id)
+            messages.success(request, f'Paper "{paper.title}" uploaded successfully! You can now ask questions about it.')
+            return redirect('papers:qa', paper_id=paper.id)  # Redirect directly to Q&A
         else:
             messages.error(request, 'Please correct the errors below.')
     else:
-        form = PaperUploadForm()
+        form = SimpleUploadForm()
     
-    return render(request, 'papers/upload.html', {'form': form})
+    return render(request, 'papers/upload_enhanced.html', {'form': form})
 
 @login_required
 def paper_list(request):
     """Display user's uploaded papers with filtering and pagination"""
     papers = Paper.objects.filter(user=request.user)
+    
+    # Get statistics for all user papers
+    all_papers = Paper.objects.filter(user=request.user)
+    completed_count = all_papers.filter(analysis_status='completed').count()
+    processing_count = all_papers.filter(analysis_status='processing').count()
+    pending_count = all_papers.filter(analysis_status='pending').count()
     
     # Search functionality
     search_query = request.GET.get('search', '')
@@ -67,8 +68,8 @@ def paper_list(request):
     if status_filter:
         papers = papers.filter(analysis_status=status_filter)
     
-    # Pagination
-    paginator = Paginator(papers, 10)
+    # Pagination - increased to 12 for better grid layout
+    paginator = Paginator(papers, 12)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
     
@@ -77,8 +78,11 @@ def paper_list(request):
         'search_query': search_query,
         'status_filter': status_filter,
         'total_papers': papers.count(),
+        'completed_count': completed_count,
+        'processing_count': processing_count,
+        'pending_count': pending_count,
     }
-    return render(request, 'papers/list.html', context)
+    return render(request, 'papers/list_enhanced.html', context)
 
 @login_required
 def paper_detail(request, paper_id):
@@ -493,3 +497,1889 @@ def search_suggestions(request):
     }
     
     return JsonResponse(context)
+
+
+# RAG Q&A Views
+@login_required
+def paper_qa(request, paper_id):
+    """Main Q&A interface for a paper"""
+    paper = get_object_or_404(Paper, id=paper_id, user=request.user)
+    
+    # Get or create Q&A session
+    qa_session, created = QASession.objects.get_or_create(
+        paper=paper,
+        user=request.user,
+        defaults={'session_name': f"Q&A for {paper.title[:50]}"}
+    )
+    
+    # Get previous questions in this session
+    questions = qa_session.questions.all()
+    
+    # Get RAG service for paper processing status
+    rag_service = RAGService()
+    is_processed = bool(rag_service.load_vectorstore(paper.id))
+    
+    # Get question templates organized by category
+    templates_by_category = {}
+    templates = QuestionTemplate.objects.filter(is_active=True)
+    for template in templates:
+        if template.category not in templates_by_category:
+            templates_by_category[template.category] = []
+        templates_by_category[template.category].append(template)
+    
+    # Get paper tags
+    available_tags = PaperTag.objects.filter(created_by=request.user)
+    paper_tags = paper.tags.all()
+    
+    # Get research notes for this paper
+    notes = ResearchNote.objects.filter(paper=paper, user=request.user)
+    
+    context = {
+        'paper': paper,
+        'qa_session': qa_session,
+        'questions': questions,
+        'is_processed': is_processed,
+        'templates_by_category': templates_by_category,
+        'available_tags': available_tags,
+        'paper_tags': paper_tags,
+        'notes': notes,
+    }
+    
+    return render(request, 'papers/qa_interface_v2.html', context)
+
+
+@login_required
+@require_http_methods(["POST"])
+def ask_question(request, paper_id):
+    """Handle question submission and return answer"""
+    paper = get_object_or_404(Paper, id=paper_id, user=request.user)
+    
+    question = request.POST.get('question', '').strip()
+    if not question:
+        return JsonResponse({'error': 'Question cannot be empty'}, status=400)
+    
+    try:
+        # Get or create Q&A session
+        qa_session, created = QASession.objects.get_or_create(
+            paper=paper,
+            user=request.user,
+            defaults={'session_name': f"Q&A for {paper.title[:50]}"}
+        )
+        
+        # Initialize RAG service
+        rag_service = RAGService()
+        
+        # Get answer using RAG
+        start_time = timezone.now()
+        result = rag_service.answer_question(paper, question)
+        processing_time = (timezone.now() - start_time).total_seconds()
+        
+        # Save question and answer
+        paper_question = PaperQuestion.objects.create(
+            qa_session=qa_session,
+            question=question,
+            answer=result['answer'],
+            sources=result['sources'],
+            model_used=result['model_used'],
+            processing_time=processing_time
+        )
+        
+        # Generate follow-up questions
+        followup_questions = rag_service.generate_followup_questions(
+            paper, question, result['answer']
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'question_id': str(paper_question.id),
+            'answer': result['answer'],
+            'sources': result['sources'],
+            'processing_time': processing_time,
+            'timestamp': paper_question.created_at.isoformat(),
+            'followup_questions': followup_questions
+        })
+        
+    except Exception as e:
+        logger.error(f"Error processing question for paper {paper_id}: {str(e)}")
+        return JsonResponse({
+            'error': f'Error processing question: {str(e)}'
+        }, status=500)
+
+
+@login_required
+def process_paper(request, paper_id):
+    """Process paper for RAG (extract text and create embeddings)"""
+    paper = get_object_or_404(Paper, id=paper_id, user=request.user)
+    
+    try:
+        rag_service = RAGService()
+        result = rag_service.process_paper(paper)
+        
+        messages.success(request, result)
+        return JsonResponse({'success': True, 'message': result})
+        
+    except Exception as e:
+        error_msg = f'Error processing paper: {str(e)}'
+        logger.error(f"Error processing paper {paper_id}: {str(e)}")
+        return JsonResponse({'error': error_msg}, status=500)
+
+
+@login_required
+def get_question_suggestions(request, paper_id):
+    """Get suggested questions for a paper"""
+    paper = get_object_or_404(Paper, id=paper_id, user=request.user)
+    
+    try:
+        rag_service = RAGService()
+        suggestions = rag_service.suggest_questions(paper)
+        
+        return JsonResponse({
+            'success': True,
+            'suggestions': suggestions
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting question suggestions for paper {paper_id}: {str(e)}")
+        return JsonResponse({
+            'error': f'Error getting suggestions: {str(e)}'
+        }, status=500)
+
+
+@login_required
+def get_paper_summary(request, paper_id):
+    """Get AI-generated summary of the paper"""
+    paper = get_object_or_404(Paper, id=paper_id, user=request.user)
+    
+    try:
+        rag_service = RAGService()
+        summary_result = rag_service.get_paper_summary(paper)
+        
+        return JsonResponse({
+            'success': True,
+            'summary': summary_result['summary'],
+            'generated_at': summary_result['generated_at'],
+            'model_used': summary_result['model_used']
+        })
+        
+    except Exception as e:
+        logger.error(f"Error generating summary for paper {paper_id}: {str(e)}")
+        return JsonResponse({
+            'error': f'Error generating summary: {str(e)}'
+        }, status=500)
+
+
+@login_required
+def qa_session_history(request, paper_id):
+    """Get Q&A session history for a paper"""
+    paper = get_object_or_404(Paper, id=paper_id, user=request.user)
+    
+    try:
+        qa_session = QASession.objects.get(paper=paper, user=request.user)
+        questions = qa_session.questions.all().values(
+            'id', 'question', 'answer', 'created_at', 'processing_time'
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'session_id': str(qa_session.id),
+            'questions': list(questions)
+        })
+        
+    except QASession.DoesNotExist:
+        return JsonResponse({
+            'success': True,
+            'session_id': None,
+            'questions': []
+        })
+    except Exception as e:
+        logger.error(f"Error getting Q&A history for paper {paper_id}: {str(e)}")
+        return JsonResponse({
+            'error': f'Error getting history: {str(e)}'
+        }, status=500)
+
+
+# Tag Management Views
+@login_required
+@require_http_methods(["POST"])
+def create_tag(request):
+    """Create a new paper tag"""
+    try:
+        name = request.POST.get('name', '').strip()
+        color = request.POST.get('color', '#007bff')
+        description = request.POST.get('description', '').strip()
+        
+        if not name:
+            return JsonResponse({'error': 'Tag name is required'}, status=400)
+        
+        tag, created = PaperTag.objects.get_or_create(
+            name=name,
+            created_by=request.user,
+            defaults={'color': color, 'description': description}
+        )
+        
+        if not created:
+            return JsonResponse({'error': 'Tag already exists'}, status=400)
+        
+        return JsonResponse({
+            'success': True,
+            'tag': {
+                'id': str(tag.id),
+                'name': tag.name,
+                'color': tag.color,
+                'description': tag.description
+            }
+        })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+# Export Views
+@login_required
+def export_qa_session(request, paper_id):
+    """Export Q&A session as PDF"""
+    paper = get_object_or_404(Paper, id=paper_id, user=request.user)
+    
+    try:
+        qa_session = QASession.objects.get(paper=paper, user=request.user)
+        questions = qa_session.questions.all()
+        
+        if not questions:
+            return JsonResponse({'error': 'No Q&A session found'}, status=404)
+        
+        from reportlab.lib.pagesizes import letter, A4
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import inch
+        from reportlab.lib import colors
+        from io import BytesIO
+        
+        # Create PDF buffer
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=72, leftMargin=72,
+                               topMargin=72, bottomMargin=18)
+        
+        # Get styles
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=18,
+            textColor=colors.darkblue,
+            spaceAfter=30,
+        )
+        
+        question_style = ParagraphStyle(
+            'Question',
+            parent=styles['Normal'],
+            fontSize=12,
+            textColor=colors.blue,
+            fontName='Helvetica-Bold',
+            spaceBefore=12,
+            spaceAfter=6,
+        )
+        
+        answer_style = ParagraphStyle(
+            'Answer',
+            parent=styles['Normal'],
+            fontSize=11,
+            textColor=colors.black,
+            spaceAfter=12,
+            leftIndent=20,
+        )
+        
+        # Build story
+        story = []
+        
+        # Title
+        story.append(Paragraph(f"Q&A Session: {paper.title}", title_style))
+        story.append(Spacer(1, 12))
+        
+        # Paper info
+        paper_info = f"<b>Authors:</b> {paper.authors or 'Not specified'}<br/>"
+        paper_info += f"<b>Generated:</b> {timezone.now().strftime('%B %d, %Y at %I:%M %p')}<br/>"
+        paper_info += f"<b>Total Questions:</b> {questions.count()}"
+        story.append(Paragraph(paper_info, styles['Normal']))
+        story.append(Spacer(1, 20))
+        
+        # Questions and answers
+        for i, q in enumerate(questions, 1):
+            story.append(Paragraph(f"Q{i}: {q.question}", question_style))
+            story.append(Paragraph(q.answer, answer_style))
+            
+            if q.sources:
+                sources_text = "<b>Sources:</b><br/>"
+                for source in q.sources:
+                    sources_text += f"• Chunk {source.get('chunk_id', 'N/A')}: {source.get('content_preview', '')[:100]}...<br/>"
+                story.append(Paragraph(sources_text, styles['Normal']))
+            
+            story.append(Spacer(1, 12))
+        
+        # Build PDF
+        doc.build(story)
+        
+        # Get PDF data
+        buffer.seek(0)
+        pdf_data = buffer.getvalue()
+        buffer.close()
+        
+        # Return PDF response
+        response = HttpResponse(pdf_data, content_type='application/pdf')
+        filename = f"qa_session_{paper.title[:30]}.pdf".replace(' ', '_')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        
+        return response
+        
+    except QASession.DoesNotExist:
+        return JsonResponse({'error': 'No Q&A session found'}, status=404)
+    except Exception as e:
+        logger.error(f"Error exporting Q&A session for paper {paper_id}: {str(e)}")
+        return JsonResponse({'error': f'Export failed: {str(e)}'}, status=500)
+
+
+# Comparative Analysis Views
+@login_required
+def comparative_analysis(request):
+    """Main comparative analysis interface"""
+    user_papers = Paper.objects.filter(user=request.user).order_by('-created_at')
+    
+    context = {
+        'papers': user_papers,
+        'total_papers': user_papers.count()
+    }
+    
+    return render(request, 'papers/comparative_analysis.html', context)
+
+
+@login_required
+@require_http_methods(["POST"])
+def compare_papers(request):
+    """Compare selected papers"""
+    try:
+        paper_ids = request.POST.getlist('paper_ids')
+        comparison_aspects = request.POST.getlist('aspects')
+        
+        if len(paper_ids) < 2:
+            return JsonResponse({'error': 'Please select at least 2 papers to compare'}, status=400)
+        
+        # Get papers
+        papers = Paper.objects.filter(id__in=paper_ids, user=request.user)
+        
+        if papers.count() != len(paper_ids):
+            return JsonResponse({'error': 'Some selected papers were not found'}, status=404)
+        
+        # Perform comparison
+        comparison_service = ComparativeAnalysisService()
+        result = comparison_service.compare_papers(
+            list(papers), 
+            comparison_aspects if comparison_aspects else None
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'comparison': result
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in comparative analysis: {str(e)}")
+        return JsonResponse({'error': f'Comparison failed: {str(e)}'}, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def generate_literature_review(request):
+    """Generate literature review from selected papers"""
+    try:
+        paper_ids = request.POST.getlist('paper_ids')
+        topic = request.POST.get('topic', '').strip()
+        
+        if not paper_ids:
+            return JsonResponse({'error': 'Please select papers for literature review'}, status=400)
+        
+        # Get papers
+        papers = Paper.objects.filter(id__in=paper_ids, user=request.user)
+        
+        if papers.count() == 0:
+            return JsonResponse({'error': 'No valid papers selected'}, status=404)
+        
+        # Generate literature review
+        comparison_service = ComparativeAnalysisService()
+        result = comparison_service.generate_literature_review(
+            list(papers), 
+            topic if topic else None
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'literature_review': result
+        })
+        
+    except Exception as e:
+        logger.error(f"Error generating literature review: {str(e)}")
+        return JsonResponse({'error': f'Literature review generation failed: {str(e)}'}, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def add_paper_tag(request, paper_id):
+    """Add tag to paper"""
+    paper = get_object_or_404(Paper, id=paper_id, user=request.user)
+    
+    try:
+        tag_id = request.POST.get('tag_id')
+        tag = get_object_or_404(PaperTag, id=tag_id, created_by=request.user)
+        
+        paper.tags.add(tag)
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'Tag "{tag.name}" added to paper'
+        })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+# Export Views
+@login_required
+def export_qa_session(request, paper_id):
+    """Export Q&A session as PDF"""
+    paper = get_object_or_404(Paper, id=paper_id, user=request.user)
+    
+    try:
+        qa_session = QASession.objects.get(paper=paper, user=request.user)
+        questions = qa_session.questions.all()
+        
+        if not questions:
+            return JsonResponse({'error': 'No Q&A session found'}, status=404)
+        
+        from reportlab.lib.pagesizes import letter, A4
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import inch
+        from reportlab.lib import colors
+        from io import BytesIO
+        
+        # Create PDF buffer
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=72, leftMargin=72,
+                               topMargin=72, bottomMargin=18)
+        
+        # Get styles
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=18,
+            textColor=colors.darkblue,
+            spaceAfter=30,
+        )
+        
+        question_style = ParagraphStyle(
+            'Question',
+            parent=styles['Normal'],
+            fontSize=12,
+            textColor=colors.blue,
+            fontName='Helvetica-Bold',
+            spaceBefore=12,
+            spaceAfter=6,
+        )
+        
+        answer_style = ParagraphStyle(
+            'Answer',
+            parent=styles['Normal'],
+            fontSize=11,
+            textColor=colors.black,
+            spaceAfter=12,
+            leftIndent=20,
+        )
+        
+        # Build story
+        story = []
+        
+        # Title
+        story.append(Paragraph(f"Q&A Session: {paper.title}", title_style))
+        story.append(Spacer(1, 12))
+        
+        # Paper info
+        paper_info = f"<b>Authors:</b> {paper.authors or 'Not specified'}<br/>"
+        paper_info += f"<b>Generated:</b> {timezone.now().strftime('%B %d, %Y at %I:%M %p')}<br/>"
+        paper_info += f"<b>Total Questions:</b> {questions.count()}"
+        story.append(Paragraph(paper_info, styles['Normal']))
+        story.append(Spacer(1, 20))
+        
+        # Questions and answers
+        for i, q in enumerate(questions, 1):
+            story.append(Paragraph(f"Q{i}: {q.question}", question_style))
+            story.append(Paragraph(q.answer, answer_style))
+            
+            if q.sources:
+                sources_text = "<b>Sources:</b><br/>"
+                for source in q.sources:
+                    sources_text += f"• Chunk {source.get('chunk_id', 'N/A')}: {source.get('content_preview', '')[:100]}...<br/>"
+                story.append(Paragraph(sources_text, styles['Normal']))
+            
+            story.append(Spacer(1, 12))
+        
+        # Build PDF
+        doc.build(story)
+        
+        # Get PDF data
+        buffer.seek(0)
+        pdf_data = buffer.getvalue()
+        buffer.close()
+        
+        # Return PDF response
+        response = HttpResponse(pdf_data, content_type='application/pdf')
+        filename = f"qa_session_{paper.title[:30]}.pdf".replace(' ', '_')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        
+        return response
+        
+    except QASession.DoesNotExist:
+        return JsonResponse({'error': 'No Q&A session found'}, status=404)
+    except Exception as e:
+        logger.error(f"Error exporting Q&A session for paper {paper_id}: {str(e)}")
+        return JsonResponse({'error': f'Export failed: {str(e)}'}, status=500)
+
+
+# Comparative Analysis Views
+@login_required
+def comparative_analysis(request):
+    """Main comparative analysis interface"""
+    user_papers = Paper.objects.filter(user=request.user).order_by('-created_at')
+    
+    context = {
+        'papers': user_papers,
+        'total_papers': user_papers.count()
+    }
+    
+    return render(request, 'papers/comparative_analysis.html', context)
+
+
+@login_required
+@require_http_methods(["POST"])
+def compare_papers(request):
+    """Compare selected papers"""
+    try:
+        paper_ids = request.POST.getlist('paper_ids')
+        comparison_aspects = request.POST.getlist('aspects')
+        
+        if len(paper_ids) < 2:
+            return JsonResponse({'error': 'Please select at least 2 papers to compare'}, status=400)
+        
+        # Get papers
+        papers = Paper.objects.filter(id__in=paper_ids, user=request.user)
+        
+        if papers.count() != len(paper_ids):
+            return JsonResponse({'error': 'Some selected papers were not found'}, status=404)
+        
+        # Perform comparison
+        comparison_service = ComparativeAnalysisService()
+        result = comparison_service.compare_papers(
+            list(papers), 
+            comparison_aspects if comparison_aspects else None
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'comparison': result
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in comparative analysis: {str(e)}")
+        return JsonResponse({'error': f'Comparison failed: {str(e)}'}, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def generate_literature_review(request):
+    """Generate literature review from selected papers"""
+    try:
+        paper_ids = request.POST.getlist('paper_ids')
+        topic = request.POST.get('topic', '').strip()
+        
+        if not paper_ids:
+            return JsonResponse({'error': 'Please select papers for literature review'}, status=400)
+        
+        # Get papers
+        papers = Paper.objects.filter(id__in=paper_ids, user=request.user)
+        
+        if papers.count() == 0:
+            return JsonResponse({'error': 'No valid papers selected'}, status=404)
+        
+        # Generate literature review
+        comparison_service = ComparativeAnalysisService()
+        result = comparison_service.generate_literature_review(
+            list(papers), 
+            topic if topic else None
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'literature_review': result
+        })
+        
+    except Exception as e:
+        logger.error(f"Error generating literature review: {str(e)}")
+        return JsonResponse({'error': f'Literature review generation failed: {str(e)}'}, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def remove_paper_tag(request, paper_id):
+    """Remove tag from paper"""
+    paper = get_object_or_404(Paper, id=paper_id, user=request.user)
+    
+    try:
+        tag_id = request.POST.get('tag_id')
+        tag = get_object_or_404(PaperTag, id=tag_id, created_by=request.user)
+        
+        paper.tags.remove(tag)
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'Tag "{tag.name}" removed from paper'
+        })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+# Export Views
+@login_required
+def export_qa_session(request, paper_id):
+    """Export Q&A session as PDF"""
+    paper = get_object_or_404(Paper, id=paper_id, user=request.user)
+    
+    try:
+        qa_session = QASession.objects.get(paper=paper, user=request.user)
+        questions = qa_session.questions.all()
+        
+        if not questions:
+            return JsonResponse({'error': 'No Q&A session found'}, status=404)
+        
+        from reportlab.lib.pagesizes import letter, A4
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import inch
+        from reportlab.lib import colors
+        from io import BytesIO
+        
+        # Create PDF buffer
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=72, leftMargin=72,
+                               topMargin=72, bottomMargin=18)
+        
+        # Get styles
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=18,
+            textColor=colors.darkblue,
+            spaceAfter=30,
+        )
+        
+        question_style = ParagraphStyle(
+            'Question',
+            parent=styles['Normal'],
+            fontSize=12,
+            textColor=colors.blue,
+            fontName='Helvetica-Bold',
+            spaceBefore=12,
+            spaceAfter=6,
+        )
+        
+        answer_style = ParagraphStyle(
+            'Answer',
+            parent=styles['Normal'],
+            fontSize=11,
+            textColor=colors.black,
+            spaceAfter=12,
+            leftIndent=20,
+        )
+        
+        # Build story
+        story = []
+        
+        # Title
+        story.append(Paragraph(f"Q&A Session: {paper.title}", title_style))
+        story.append(Spacer(1, 12))
+        
+        # Paper info
+        paper_info = f"<b>Authors:</b> {paper.authors or 'Not specified'}<br/>"
+        paper_info += f"<b>Generated:</b> {timezone.now().strftime('%B %d, %Y at %I:%M %p')}<br/>"
+        paper_info += f"<b>Total Questions:</b> {questions.count()}"
+        story.append(Paragraph(paper_info, styles['Normal']))
+        story.append(Spacer(1, 20))
+        
+        # Questions and answers
+        for i, q in enumerate(questions, 1):
+            story.append(Paragraph(f"Q{i}: {q.question}", question_style))
+            story.append(Paragraph(q.answer, answer_style))
+            
+            if q.sources:
+                sources_text = "<b>Sources:</b><br/>"
+                for source in q.sources:
+                    sources_text += f"• Chunk {source.get('chunk_id', 'N/A')}: {source.get('content_preview', '')[:100]}...<br/>"
+                story.append(Paragraph(sources_text, styles['Normal']))
+            
+            story.append(Spacer(1, 12))
+        
+        # Build PDF
+        doc.build(story)
+        
+        # Get PDF data
+        buffer.seek(0)
+        pdf_data = buffer.getvalue()
+        buffer.close()
+        
+        # Return PDF response
+        response = HttpResponse(pdf_data, content_type='application/pdf')
+        filename = f"qa_session_{paper.title[:30]}.pdf".replace(' ', '_')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        
+        return response
+        
+    except QASession.DoesNotExist:
+        return JsonResponse({'error': 'No Q&A session found'}, status=404)
+    except Exception as e:
+        logger.error(f"Error exporting Q&A session for paper {paper_id}: {str(e)}")
+        return JsonResponse({'error': f'Export failed: {str(e)}'}, status=500)
+
+
+# Comparative Analysis Views
+@login_required
+def comparative_analysis(request):
+    """Main comparative analysis interface"""
+    user_papers = Paper.objects.filter(user=request.user).order_by('-created_at')
+    
+    context = {
+        'papers': user_papers,
+        'total_papers': user_papers.count()
+    }
+    
+    return render(request, 'papers/comparative_analysis.html', context)
+
+
+@login_required
+@require_http_methods(["POST"])
+def compare_papers(request):
+    """Compare selected papers"""
+    try:
+        paper_ids = request.POST.getlist('paper_ids')
+        comparison_aspects = request.POST.getlist('aspects')
+        
+        if len(paper_ids) < 2:
+            return JsonResponse({'error': 'Please select at least 2 papers to compare'}, status=400)
+        
+        # Get papers
+        papers = Paper.objects.filter(id__in=paper_ids, user=request.user)
+        
+        if papers.count() != len(paper_ids):
+            return JsonResponse({'error': 'Some selected papers were not found'}, status=404)
+        
+        # Perform comparison
+        comparison_service = ComparativeAnalysisService()
+        result = comparison_service.compare_papers(
+            list(papers), 
+            comparison_aspects if comparison_aspects else None
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'comparison': result
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in comparative analysis: {str(e)}")
+        return JsonResponse({'error': f'Comparison failed: {str(e)}'}, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def generate_literature_review(request):
+    """Generate literature review from selected papers"""
+    try:
+        paper_ids = request.POST.getlist('paper_ids')
+        topic = request.POST.get('topic', '').strip()
+        
+        if not paper_ids:
+            return JsonResponse({'error': 'Please select papers for literature review'}, status=400)
+        
+        # Get papers
+        papers = Paper.objects.filter(id__in=paper_ids, user=request.user)
+        
+        if papers.count() == 0:
+            return JsonResponse({'error': 'No valid papers selected'}, status=404)
+        
+        # Generate literature review
+        comparison_service = ComparativeAnalysisService()
+        result = comparison_service.generate_literature_review(
+            list(papers), 
+            topic if topic else None
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'literature_review': result
+        })
+        
+    except Exception as e:
+        logger.error(f"Error generating literature review: {str(e)}")
+        return JsonResponse({'error': f'Literature review generation failed: {str(e)}'}, status=500)
+
+
+# Research Notes Views
+@login_required
+@require_http_methods(["POST"])
+def create_note(request, paper_id):
+    """Create a research note for a paper"""
+    paper = get_object_or_404(Paper, id=paper_id, user=request.user)
+    
+    try:
+        title = request.POST.get('title', '').strip()
+        content = request.POST.get('content', '').strip()
+        
+        if not title or not content:
+            return JsonResponse({'error': 'Title and content are required'}, status=400)
+        
+        note = ResearchNote.objects.create(
+            paper=paper,
+            user=request.user,
+            title=title,
+            content=content
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'note': {
+                'id': str(note.id),
+                'title': note.title,
+                'content': note.content,
+                'created_at': note.created_at.isoformat()
+            }
+        })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+# Export Views
+@login_required
+def export_qa_session(request, paper_id):
+    """Export Q&A session as PDF"""
+    paper = get_object_or_404(Paper, id=paper_id, user=request.user)
+    
+    try:
+        qa_session = QASession.objects.get(paper=paper, user=request.user)
+        questions = qa_session.questions.all()
+        
+        if not questions:
+            return JsonResponse({'error': 'No Q&A session found'}, status=404)
+        
+        from reportlab.lib.pagesizes import letter, A4
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import inch
+        from reportlab.lib import colors
+        from io import BytesIO
+        
+        # Create PDF buffer
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=72, leftMargin=72,
+                               topMargin=72, bottomMargin=18)
+        
+        # Get styles
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=18,
+            textColor=colors.darkblue,
+            spaceAfter=30,
+        )
+        
+        question_style = ParagraphStyle(
+            'Question',
+            parent=styles['Normal'],
+            fontSize=12,
+            textColor=colors.blue,
+            fontName='Helvetica-Bold',
+            spaceBefore=12,
+            spaceAfter=6,
+        )
+        
+        answer_style = ParagraphStyle(
+            'Answer',
+            parent=styles['Normal'],
+            fontSize=11,
+            textColor=colors.black,
+            spaceAfter=12,
+            leftIndent=20,
+        )
+        
+        # Build story
+        story = []
+        
+        # Title
+        story.append(Paragraph(f"Q&A Session: {paper.title}", title_style))
+        story.append(Spacer(1, 12))
+        
+        # Paper info
+        paper_info = f"<b>Authors:</b> {paper.authors or 'Not specified'}<br/>"
+        paper_info += f"<b>Generated:</b> {timezone.now().strftime('%B %d, %Y at %I:%M %p')}<br/>"
+        paper_info += f"<b>Total Questions:</b> {questions.count()}"
+        story.append(Paragraph(paper_info, styles['Normal']))
+        story.append(Spacer(1, 20))
+        
+        # Questions and answers
+        for i, q in enumerate(questions, 1):
+            story.append(Paragraph(f"Q{i}: {q.question}", question_style))
+            story.append(Paragraph(q.answer, answer_style))
+            
+            if q.sources:
+                sources_text = "<b>Sources:</b><br/>"
+                for source in q.sources:
+                    sources_text += f"• Chunk {source.get('chunk_id', 'N/A')}: {source.get('content_preview', '')[:100]}...<br/>"
+                story.append(Paragraph(sources_text, styles['Normal']))
+            
+            story.append(Spacer(1, 12))
+        
+        # Build PDF
+        doc.build(story)
+        
+        # Get PDF data
+        buffer.seek(0)
+        pdf_data = buffer.getvalue()
+        buffer.close()
+        
+        # Return PDF response
+        response = HttpResponse(pdf_data, content_type='application/pdf')
+        filename = f"qa_session_{paper.title[:30]}.pdf".replace(' ', '_')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        
+        return response
+        
+    except QASession.DoesNotExist:
+        return JsonResponse({'error': 'No Q&A session found'}, status=404)
+    except Exception as e:
+        logger.error(f"Error exporting Q&A session for paper {paper_id}: {str(e)}")
+        return JsonResponse({'error': f'Export failed: {str(e)}'}, status=500)
+
+
+# Comparative Analysis Views
+@login_required
+def comparative_analysis(request):
+    """Main comparative analysis interface"""
+    user_papers = Paper.objects.filter(user=request.user).order_by('-created_at')
+    
+    context = {
+        'papers': user_papers,
+        'total_papers': user_papers.count()
+    }
+    
+    return render(request, 'papers/comparative_analysis.html', context)
+
+
+@login_required
+@require_http_methods(["POST"])
+def compare_papers(request):
+    """Compare selected papers"""
+    try:
+        paper_ids = request.POST.getlist('paper_ids')
+        comparison_aspects = request.POST.getlist('aspects')
+        
+        if len(paper_ids) < 2:
+            return JsonResponse({'error': 'Please select at least 2 papers to compare'}, status=400)
+        
+        # Get papers
+        papers = Paper.objects.filter(id__in=paper_ids, user=request.user)
+        
+        if papers.count() != len(paper_ids):
+            return JsonResponse({'error': 'Some selected papers were not found'}, status=404)
+        
+        # Perform comparison
+        comparison_service = ComparativeAnalysisService()
+        result = comparison_service.compare_papers(
+            list(papers), 
+            comparison_aspects if comparison_aspects else None
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'comparison': result
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in comparative analysis: {str(e)}")
+        return JsonResponse({'error': f'Comparison failed: {str(e)}'}, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def generate_literature_review(request):
+    """Generate literature review from selected papers"""
+    try:
+        paper_ids = request.POST.getlist('paper_ids')
+        topic = request.POST.get('topic', '').strip()
+        
+        if not paper_ids:
+            return JsonResponse({'error': 'Please select papers for literature review'}, status=400)
+        
+        # Get papers
+        papers = Paper.objects.filter(id__in=paper_ids, user=request.user)
+        
+        if papers.count() == 0:
+            return JsonResponse({'error': 'No valid papers selected'}, status=404)
+        
+        # Generate literature review
+        comparison_service = ComparativeAnalysisService()
+        result = comparison_service.generate_literature_review(
+            list(papers), 
+            topic if topic else None
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'literature_review': result
+        })
+        
+    except Exception as e:
+        logger.error(f"Error generating literature review: {str(e)}")
+        return JsonResponse({'error': f'Literature review generation failed: {str(e)}'}, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def update_note(request, paper_id, note_id):
+    """Update a research note"""
+    paper = get_object_or_404(Paper, id=paper_id, user=request.user)
+    note = get_object_or_404(ResearchNote, id=note_id, paper=paper, user=request.user)
+    
+    try:
+        title = request.POST.get('title', '').strip()
+        content = request.POST.get('content', '').strip()
+        
+        if title:
+            note.title = title
+        if content:
+            note.content = content
+        
+        note.save()
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Note updated successfully'
+        })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+# Export Views
+@login_required
+def export_qa_session(request, paper_id):
+    """Export Q&A session as PDF"""
+    paper = get_object_or_404(Paper, id=paper_id, user=request.user)
+    
+    try:
+        qa_session = QASession.objects.get(paper=paper, user=request.user)
+        questions = qa_session.questions.all()
+        
+        if not questions:
+            return JsonResponse({'error': 'No Q&A session found'}, status=404)
+        
+        from reportlab.lib.pagesizes import letter, A4
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import inch
+        from reportlab.lib import colors
+        from io import BytesIO
+        
+        # Create PDF buffer
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=72, leftMargin=72,
+                               topMargin=72, bottomMargin=18)
+        
+        # Get styles
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=18,
+            textColor=colors.darkblue,
+            spaceAfter=30,
+        )
+        
+        question_style = ParagraphStyle(
+            'Question',
+            parent=styles['Normal'],
+            fontSize=12,
+            textColor=colors.blue,
+            fontName='Helvetica-Bold',
+            spaceBefore=12,
+            spaceAfter=6,
+        )
+        
+        answer_style = ParagraphStyle(
+            'Answer',
+            parent=styles['Normal'],
+            fontSize=11,
+            textColor=colors.black,
+            spaceAfter=12,
+            leftIndent=20,
+        )
+        
+        # Build story
+        story = []
+        
+        # Title
+        story.append(Paragraph(f"Q&A Session: {paper.title}", title_style))
+        story.append(Spacer(1, 12))
+        
+        # Paper info
+        paper_info = f"<b>Authors:</b> {paper.authors or 'Not specified'}<br/>"
+        paper_info += f"<b>Generated:</b> {timezone.now().strftime('%B %d, %Y at %I:%M %p')}<br/>"
+        paper_info += f"<b>Total Questions:</b> {questions.count()}"
+        story.append(Paragraph(paper_info, styles['Normal']))
+        story.append(Spacer(1, 20))
+        
+        # Questions and answers
+        for i, q in enumerate(questions, 1):
+            story.append(Paragraph(f"Q{i}: {q.question}", question_style))
+            story.append(Paragraph(q.answer, answer_style))
+            
+            if q.sources:
+                sources_text = "<b>Sources:</b><br/>"
+                for source in q.sources:
+                    sources_text += f"• Chunk {source.get('chunk_id', 'N/A')}: {source.get('content_preview', '')[:100]}...<br/>"
+                story.append(Paragraph(sources_text, styles['Normal']))
+            
+            story.append(Spacer(1, 12))
+        
+        # Build PDF
+        doc.build(story)
+        
+        # Get PDF data
+        buffer.seek(0)
+        pdf_data = buffer.getvalue()
+        buffer.close()
+        
+        # Return PDF response
+        response = HttpResponse(pdf_data, content_type='application/pdf')
+        filename = f"qa_session_{paper.title[:30]}.pdf".replace(' ', '_')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        
+        return response
+        
+    except QASession.DoesNotExist:
+        return JsonResponse({'error': 'No Q&A session found'}, status=404)
+    except Exception as e:
+        logger.error(f"Error exporting Q&A session for paper {paper_id}: {str(e)}")
+        return JsonResponse({'error': f'Export failed: {str(e)}'}, status=500)
+
+
+# Comparative Analysis Views
+@login_required
+def comparative_analysis(request):
+    """Main comparative analysis interface"""
+    user_papers = Paper.objects.filter(user=request.user).order_by('-created_at')
+    
+    context = {
+        'papers': user_papers,
+        'total_papers': user_papers.count()
+    }
+    
+    return render(request, 'papers/comparative_analysis.html', context)
+
+
+@login_required
+@require_http_methods(["POST"])
+def compare_papers(request):
+    """Compare selected papers"""
+    try:
+        paper_ids = request.POST.getlist('paper_ids')
+        comparison_aspects = request.POST.getlist('aspects')
+        
+        if len(paper_ids) < 2:
+            return JsonResponse({'error': 'Please select at least 2 papers to compare'}, status=400)
+        
+        # Get papers
+        papers = Paper.objects.filter(id__in=paper_ids, user=request.user)
+        
+        if papers.count() != len(paper_ids):
+            return JsonResponse({'error': 'Some selected papers were not found'}, status=404)
+        
+        # Perform comparison
+        comparison_service = ComparativeAnalysisService()
+        result = comparison_service.compare_papers(
+            list(papers), 
+            comparison_aspects if comparison_aspects else None
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'comparison': result
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in comparative analysis: {str(e)}")
+        return JsonResponse({'error': f'Comparison failed: {str(e)}'}, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def generate_literature_review(request):
+    """Generate literature review from selected papers"""
+    try:
+        paper_ids = request.POST.getlist('paper_ids')
+        topic = request.POST.get('topic', '').strip()
+        
+        if not paper_ids:
+            return JsonResponse({'error': 'Please select papers for literature review'}, status=400)
+        
+        # Get papers
+        papers = Paper.objects.filter(id__in=paper_ids, user=request.user)
+        
+        if papers.count() == 0:
+            return JsonResponse({'error': 'No valid papers selected'}, status=404)
+        
+        # Generate literature review
+        comparison_service = ComparativeAnalysisService()
+        result = comparison_service.generate_literature_review(
+            list(papers), 
+            topic if topic else None
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'literature_review': result
+        })
+        
+    except Exception as e:
+        logger.error(f"Error generating literature review: {str(e)}")
+        return JsonResponse({'error': f'Literature review generation failed: {str(e)}'}, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def delete_note(request, paper_id, note_id):
+    """Delete a research note"""
+    paper = get_object_or_404(Paper, id=paper_id, user=request.user)
+    note = get_object_or_404(ResearchNote, id=note_id, paper=paper, user=request.user)
+    
+    try:
+        note.delete()
+        return JsonResponse({
+            'success': True,
+            'message': 'Note deleted successfully'
+        })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+# Export Views
+@login_required
+def export_qa_session(request, paper_id):
+    """Export Q&A session as PDF"""
+    paper = get_object_or_404(Paper, id=paper_id, user=request.user)
+    
+    try:
+        qa_session = QASession.objects.get(paper=paper, user=request.user)
+        questions = qa_session.questions.all()
+        
+        if not questions:
+            return JsonResponse({'error': 'No Q&A session found'}, status=404)
+        
+        from reportlab.lib.pagesizes import letter, A4
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import inch
+        from reportlab.lib import colors
+        from io import BytesIO
+        
+        # Create PDF buffer
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=72, leftMargin=72,
+                               topMargin=72, bottomMargin=18)
+        
+        # Get styles
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=18,
+            textColor=colors.darkblue,
+            spaceAfter=30,
+        )
+        
+        question_style = ParagraphStyle(
+            'Question',
+            parent=styles['Normal'],
+            fontSize=12,
+            textColor=colors.blue,
+            fontName='Helvetica-Bold',
+            spaceBefore=12,
+            spaceAfter=6,
+        )
+        
+        answer_style = ParagraphStyle(
+            'Answer',
+            parent=styles['Normal'],
+            fontSize=11,
+            textColor=colors.black,
+            spaceAfter=12,
+            leftIndent=20,
+        )
+        
+        # Build story
+        story = []
+        
+        # Title
+        story.append(Paragraph(f"Q&A Session: {paper.title}", title_style))
+        story.append(Spacer(1, 12))
+        
+        # Paper info
+        paper_info = f"<b>Authors:</b> {paper.authors or 'Not specified'}<br/>"
+        paper_info += f"<b>Generated:</b> {timezone.now().strftime('%B %d, %Y at %I:%M %p')}<br/>"
+        paper_info += f"<b>Total Questions:</b> {questions.count()}"
+        story.append(Paragraph(paper_info, styles['Normal']))
+        story.append(Spacer(1, 20))
+        
+        # Questions and answers
+        for i, q in enumerate(questions, 1):
+            story.append(Paragraph(f"Q{i}: {q.question}", question_style))
+            story.append(Paragraph(q.answer, answer_style))
+            
+            if q.sources:
+                sources_text = "<b>Sources:</b><br/>"
+                for source in q.sources:
+                    sources_text += f"• Chunk {source.get('chunk_id', 'N/A')}: {source.get('content_preview', '')[:100]}...<br/>"
+                story.append(Paragraph(sources_text, styles['Normal']))
+            
+            story.append(Spacer(1, 12))
+        
+        # Build PDF
+        doc.build(story)
+        
+        # Get PDF data
+        buffer.seek(0)
+        pdf_data = buffer.getvalue()
+        buffer.close()
+        
+        # Return PDF response
+        response = HttpResponse(pdf_data, content_type='application/pdf')
+        filename = f"qa_session_{paper.title[:30]}.pdf".replace(' ', '_')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        
+        return response
+        
+    except QASession.DoesNotExist:
+        return JsonResponse({'error': 'No Q&A session found'}, status=404)
+    except Exception as e:
+        logger.error(f"Error exporting Q&A session for paper {paper_id}: {str(e)}")
+        return JsonResponse({'error': f'Export failed: {str(e)}'}, status=500)
+
+
+# Comparative Analysis Views
+@login_required
+def comparative_analysis(request):
+    """Main comparative analysis interface"""
+    user_papers = Paper.objects.filter(user=request.user).order_by('-created_at')
+    
+    context = {
+        'papers': user_papers,
+        'total_papers': user_papers.count()
+    }
+    
+    return render(request, 'papers/comparative_analysis.html', context)
+
+
+@login_required
+@require_http_methods(["POST"])
+def compare_papers(request):
+    """Compare selected papers"""
+    try:
+        paper_ids = request.POST.getlist('paper_ids')
+        comparison_aspects = request.POST.getlist('aspects')
+        
+        if len(paper_ids) < 2:
+            return JsonResponse({'error': 'Please select at least 2 papers to compare'}, status=400)
+        
+        # Get papers
+        papers = Paper.objects.filter(id__in=paper_ids, user=request.user)
+        
+        if papers.count() != len(paper_ids):
+            return JsonResponse({'error': 'Some selected papers were not found'}, status=404)
+        
+        # Perform comparison
+        comparison_service = ComparativeAnalysisService()
+        result = comparison_service.compare_papers(
+            list(papers), 
+            comparison_aspects if comparison_aspects else None
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'comparison': result
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in comparative analysis: {str(e)}")
+        return JsonResponse({'error': f'Comparison failed: {str(e)}'}, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def generate_literature_review(request):
+    """Generate literature review from selected papers"""
+    try:
+        paper_ids = request.POST.getlist('paper_ids')
+        topic = request.POST.get('topic', '').strip()
+        
+        if not paper_ids:
+            return JsonResponse({'error': 'Please select papers for literature review'}, status=400)
+        
+        # Get papers
+        papers = Paper.objects.filter(id__in=paper_ids, user=request.user)
+        
+        if papers.count() == 0:
+            return JsonResponse({'error': 'No valid papers selected'}, status=404)
+        
+        # Generate literature review
+        comparison_service = ComparativeAnalysisService()
+        result = comparison_service.generate_literature_review(
+            list(papers), 
+            topic if topic else None
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'literature_review': result
+        })
+        
+    except Exception as e:
+        logger.error(f"Error generating literature review: {str(e)}")
+        return JsonResponse({'error': f'Literature review generation failed: {str(e)}'}, status=500)
+
+
+# Question Templates Views
+@login_required
+def get_question_templates(request):
+    """Get question templates organized by category"""
+    try:
+        category = request.GET.get('category')
+        templates = QuestionTemplate.objects.filter(is_active=True)
+        
+        if category:
+            templates = templates.filter(category=category)
+        
+        templates_data = {}
+        for template in templates:
+            if template.category not in templates_data:
+                templates_data[template.category] = []
+            templates_data[template.category].append({
+                'id': str(template.id),
+                'question_text': template.question_text,
+                'description': template.description,
+                'usage_count': template.usage_count
+            })
+        
+        return JsonResponse({
+            'success': True,
+            'templates': templates_data
+        })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+# Export Views
+@login_required
+def export_qa_session(request, paper_id):
+    """Export Q&A session as PDF"""
+    paper = get_object_or_404(Paper, id=paper_id, user=request.user)
+    
+    try:
+        qa_session = QASession.objects.get(paper=paper, user=request.user)
+        questions = qa_session.questions.all()
+        
+        if not questions:
+            return JsonResponse({'error': 'No Q&A session found'}, status=404)
+        
+        from reportlab.lib.pagesizes import letter, A4
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import inch
+        from reportlab.lib import colors
+        from io import BytesIO
+        
+        # Create PDF buffer
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=72, leftMargin=72,
+                               topMargin=72, bottomMargin=18)
+        
+        # Get styles
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=18,
+            textColor=colors.darkblue,
+            spaceAfter=30,
+        )
+        
+        question_style = ParagraphStyle(
+            'Question',
+            parent=styles['Normal'],
+            fontSize=12,
+            textColor=colors.blue,
+            fontName='Helvetica-Bold',
+            spaceBefore=12,
+            spaceAfter=6,
+        )
+        
+        answer_style = ParagraphStyle(
+            'Answer',
+            parent=styles['Normal'],
+            fontSize=11,
+            textColor=colors.black,
+            spaceAfter=12,
+            leftIndent=20,
+        )
+        
+        # Build story
+        story = []
+        
+        # Title
+        story.append(Paragraph(f"Q&A Session: {paper.title}", title_style))
+        story.append(Spacer(1, 12))
+        
+        # Paper info
+        paper_info = f"<b>Authors:</b> {paper.authors or 'Not specified'}<br/>"
+        paper_info += f"<b>Generated:</b> {timezone.now().strftime('%B %d, %Y at %I:%M %p')}<br/>"
+        paper_info += f"<b>Total Questions:</b> {questions.count()}"
+        story.append(Paragraph(paper_info, styles['Normal']))
+        story.append(Spacer(1, 20))
+        
+        # Questions and answers
+        for i, q in enumerate(questions, 1):
+            story.append(Paragraph(f"Q{i}: {q.question}", question_style))
+            story.append(Paragraph(q.answer, answer_style))
+            
+            if q.sources:
+                sources_text = "<b>Sources:</b><br/>"
+                for source in q.sources:
+                    sources_text += f"• Chunk {source.get('chunk_id', 'N/A')}: {source.get('content_preview', '')[:100]}...<br/>"
+                story.append(Paragraph(sources_text, styles['Normal']))
+            
+            story.append(Spacer(1, 12))
+        
+        # Build PDF
+        doc.build(story)
+        
+        # Get PDF data
+        buffer.seek(0)
+        pdf_data = buffer.getvalue()
+        buffer.close()
+        
+        # Return PDF response
+        response = HttpResponse(pdf_data, content_type='application/pdf')
+        filename = f"qa_session_{paper.title[:30]}.pdf".replace(' ', '_')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        
+        return response
+        
+    except QASession.DoesNotExist:
+        return JsonResponse({'error': 'No Q&A session found'}, status=404)
+    except Exception as e:
+        logger.error(f"Error exporting Q&A session for paper {paper_id}: {str(e)}")
+        return JsonResponse({'error': f'Export failed: {str(e)}'}, status=500)
+
+
+# Comparative Analysis Views
+@login_required
+def comparative_analysis(request):
+    """Main comparative analysis interface"""
+    user_papers = Paper.objects.filter(user=request.user).order_by('-created_at')
+    
+    context = {
+        'papers': user_papers,
+        'total_papers': user_papers.count()
+    }
+    
+    return render(request, 'papers/comparative_analysis.html', context)
+
+
+@login_required
+@require_http_methods(["POST"])
+def compare_papers(request):
+    """Compare selected papers"""
+    try:
+        paper_ids = request.POST.getlist('paper_ids')
+        comparison_aspects = request.POST.getlist('aspects')
+        
+        if len(paper_ids) < 2:
+            return JsonResponse({'error': 'Please select at least 2 papers to compare'}, status=400)
+        
+        # Get papers
+        papers = Paper.objects.filter(id__in=paper_ids, user=request.user)
+        
+        if papers.count() != len(paper_ids):
+            return JsonResponse({'error': 'Some selected papers were not found'}, status=404)
+        
+        # Perform comparison
+        comparison_service = ComparativeAnalysisService()
+        result = comparison_service.compare_papers(
+            list(papers), 
+            comparison_aspects if comparison_aspects else None
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'comparison': result
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in comparative analysis: {str(e)}")
+        return JsonResponse({'error': f'Comparison failed: {str(e)}'}, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def generate_literature_review(request):
+    """Generate literature review from selected papers"""
+    try:
+        paper_ids = request.POST.getlist('paper_ids')
+        topic = request.POST.get('topic', '').strip()
+        
+        if not paper_ids:
+            return JsonResponse({'error': 'Please select papers for literature review'}, status=400)
+        
+        # Get papers
+        papers = Paper.objects.filter(id__in=paper_ids, user=request.user)
+        
+        if papers.count() == 0:
+            return JsonResponse({'error': 'No valid papers selected'}, status=404)
+        
+        # Generate literature review
+        comparison_service = ComparativeAnalysisService()
+        result = comparison_service.generate_literature_review(
+            list(papers), 
+            topic if topic else None
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'literature_review': result
+        })
+        
+    except Exception as e:
+        logger.error(f"Error generating literature review: {str(e)}")
+        return JsonResponse({'error': f'Literature review generation failed: {str(e)}'}, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def use_question_template(request, template_id):
+    """Track usage of a question template and return the question"""
+    try:
+        template = get_object_or_404(QuestionTemplate, id=template_id, is_active=True)
+        template.usage_count += 1
+        template.save()
+        
+        return JsonResponse({
+            'success': True,
+            'question_text': template.question_text
+        })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+# Export Views
+@login_required
+def export_qa_session(request, paper_id):
+    """Export Q&A session as PDF"""
+    paper = get_object_or_404(Paper, id=paper_id, user=request.user)
+    
+    try:
+        qa_session = QASession.objects.get(paper=paper, user=request.user)
+        questions = qa_session.questions.all()
+        
+        if not questions:
+            return JsonResponse({'error': 'No Q&A session found'}, status=404)
+        
+        from reportlab.lib.pagesizes import letter, A4
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import inch
+        from reportlab.lib import colors
+        from io import BytesIO
+        
+        # Create PDF buffer
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=72, leftMargin=72,
+                               topMargin=72, bottomMargin=18)
+        
+        # Get styles
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=18,
+            textColor=colors.darkblue,
+            spaceAfter=30,
+        )
+        
+        question_style = ParagraphStyle(
+            'Question',
+            parent=styles['Normal'],
+            fontSize=12,
+            textColor=colors.blue,
+            fontName='Helvetica-Bold',
+            spaceBefore=12,
+            spaceAfter=6,
+        )
+        
+        answer_style = ParagraphStyle(
+            'Answer',
+            parent=styles['Normal'],
+            fontSize=11,
+            textColor=colors.black,
+            spaceAfter=12,
+            leftIndent=20,
+        )
+        
+        # Build story
+        story = []
+        
+        # Title
+        story.append(Paragraph(f"Q&A Session: {paper.title}", title_style))
+        story.append(Spacer(1, 12))
+        
+        # Paper info
+        paper_info = f"<b>Authors:</b> {paper.authors or 'Not specified'}<br/>"
+        paper_info += f"<b>Generated:</b> {timezone.now().strftime('%B %d, %Y at %I:%M %p')}<br/>"
+        paper_info += f"<b>Total Questions:</b> {questions.count()}"
+        story.append(Paragraph(paper_info, styles['Normal']))
+        story.append(Spacer(1, 20))
+        
+        # Questions and answers
+        for i, q in enumerate(questions, 1):
+            story.append(Paragraph(f"Q{i}: {q.question}", question_style))
+            story.append(Paragraph(q.answer, answer_style))
+            
+            if q.sources:
+                sources_text = "<b>Sources:</b><br/>"
+                for source in q.sources:
+                    sources_text += f"• Chunk {source.get('chunk_id', 'N/A')}: {source.get('content_preview', '')[:100]}...<br/>"
+                story.append(Paragraph(sources_text, styles['Normal']))
+            
+            story.append(Spacer(1, 12))
+        
+        # Build PDF
+        doc.build(story)
+        
+        # Get PDF data
+        buffer.seek(0)
+        pdf_data = buffer.getvalue()
+        buffer.close()
+        
+        # Return PDF response
+        response = HttpResponse(pdf_data, content_type='application/pdf')
+        filename = f"qa_session_{paper.title[:30]}.pdf".replace(' ', '_')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        
+        return response
+        
+    except QASession.DoesNotExist:
+        return JsonResponse({'error': 'No Q&A session found'}, status=404)
+    except Exception as e:
+        logger.error(f"Error exporting Q&A session for paper {paper_id}: {str(e)}")
+        return JsonResponse({'error': f'Export failed: {str(e)}'}, status=500)
+
+
+# Comparative Analysis Views
+@login_required
+def comparative_analysis(request):
+    """Main comparative analysis interface"""
+    user_papers = Paper.objects.filter(user=request.user).order_by('-created_at')
+    
+    context = {
+        'papers': user_papers,
+        'total_papers': user_papers.count()
+    }
+    
+    return render(request, 'papers/comparative_analysis.html', context)
+
+
+@login_required
+@require_http_methods(["POST"])
+def compare_papers(request):
+    """Compare selected papers"""
+    try:
+        paper_ids = request.POST.getlist('paper_ids')
+        comparison_aspects = request.POST.getlist('aspects')
+        
+        if len(paper_ids) < 2:
+            return JsonResponse({'error': 'Please select at least 2 papers to compare'}, status=400)
+        
+        # Get papers
+        papers = Paper.objects.filter(id__in=paper_ids, user=request.user)
+        
+        if papers.count() != len(paper_ids):
+            return JsonResponse({'error': 'Some selected papers were not found'}, status=404)
+        
+        # Perform comparison
+        comparison_service = ComparativeAnalysisService()
+        result = comparison_service.compare_papers(
+            list(papers), 
+            comparison_aspects if comparison_aspects else None
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'comparison': result
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in comparative analysis: {str(e)}")
+        return JsonResponse({'error': f'Comparison failed: {str(e)}'}, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def generate_literature_review(request):
+    """Generate literature review from selected papers"""
+    try:
+        paper_ids = request.POST.getlist('paper_ids')
+        topic = request.POST.get('topic', '').strip()
+        
+        if not paper_ids:
+            return JsonResponse({'error': 'Please select papers for literature review'}, status=400)
+        
+        # Get papers
+        papers = Paper.objects.filter(id__in=paper_ids, user=request.user)
+        
+        if papers.count() == 0:
+            return JsonResponse({'error': 'No valid papers selected'}, status=404)
+        
+        # Generate literature review
+        comparison_service = ComparativeAnalysisService()
+        result = comparison_service.generate_literature_review(
+            list(papers), 
+            topic if topic else None
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'literature_review': result
+        })
+        
+    except Exception as e:
+        logger.error(f"Error generating literature review: {str(e)}")
+        return JsonResponse({'error': f'Literature review generation failed: {str(e)}'}, status=500)

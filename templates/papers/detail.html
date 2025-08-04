@@ -14,8 +14,8 @@
                         <i class="fas fa-file-alt me-2"></i>{{ paper.title }}
                     </h4>
                     <div>
-                        <span class="badge bg-{% if paper.status == 'completed' %}success{% elif paper.status == 'processing' %}warning{% elif paper.status == 'failed' %}danger{% else %}secondary{% endif %} fs-6">
-                            {{ paper.status|title }}
+                        <span class="badge bg-{% if paper.analysis_status == 'completed' %}success{% elif paper.analysis_status == 'processing' %}warning{% elif paper.analysis_status == 'failed' %}danger{% else %}secondary{% endif %} fs-6">
+                            {{ paper.analysis_status|title }}
                         </span>
                     </div>
                 </div>
@@ -70,7 +70,12 @@
                             <i class="fas fa-edit me-1"></i>Edit Metadata
                         </a>
                     </div>
-                    {% if paper.status == 'completed' %}
+                    <div class="col-md-3 mb-2">
+                        <a href="{% url 'papers:qa' paper.id %}" class="btn btn-info w-100">
+                            <i class="fas fa-comments me-1"></i>Ask Questions (RAG)
+                        </a>
+                    </div>
+                    {% if paper.analysis_status == 'completed' %}
                         <div class="col-md-3 mb-2">
                             <a href="{% url 'analysis:results' paper.id %}" class="btn btn-success w-100">
                                 <i class="fas fa-chart-bar me-1"></i>View Analysis
@@ -91,13 +96,13 @@
                                 </ul>
                             </div>
                         </div>
-                    {% elif paper.status == 'pending' %}
+                    {% elif paper.analysis_status == 'pending' %}
                         <div class="col-md-3 mb-2">
                             <button class="btn btn-warning w-100 start-analysis" data-paper-id="{{ paper.id }}">
                                 <i class="fas fa-play me-1"></i>Start Analysis
                             </button>
                         </div>
-                    {% elif paper.status == 'processing' %}
+                    {% elif paper.analysis_status == 'processing' %}
                         <div class="col-md-3 mb-2">
                             <button class="btn btn-info w-100" disabled>
                                 <i class="fas fa-spinner fa-spin me-1"></i>Processing...
@@ -154,8 +159,8 @@
                         <p><strong>Upload Date:</strong> {{ paper.created_at|date:"F d, Y" }}</p>
                         <p><strong>Last Modified:</strong> {{ paper.updated_at|date:"F d, Y" }}</p>
                         <p><strong>Status:</strong> 
-                            <span class="badge bg-{% if paper.status == 'completed' %}success{% elif paper.status == 'processing' %}warning{% elif paper.status == 'failed' %}danger{% else %}secondary{% endif %}">
-                                {{ paper.status|title }}
+                            <span class="badge bg-{% if paper.analysis_status == 'completed' %}success{% elif paper.analysis_status == 'processing' %}warning{% elif paper.analysis_status == 'failed' %}danger{% else %}secondary{% endif %}">
+                                {{ paper.analysis_status|title }}
                             </span>
                         </p>
                     </div>

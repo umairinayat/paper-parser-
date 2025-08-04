@@ -55,8 +55,8 @@
                             <div class="card-body">
                                 <div class="d-flex justify-content-between align-items-start mb-2">
                                     <h6 class="card-title">{{ paper.title|truncatechars:60 }}</h6>
-                                    <span class="badge bg-{% if paper.status == 'completed' %}success{% elif paper.status == 'processing' %}warning{% elif paper.status == 'failed' %}danger{% else %}secondary{% endif %} status-badge">
-                                        {{ paper.status|title }}
+                                    <span class="badge bg-{% if paper.analysis_status == 'completed' %}success{% elif paper.analysis_status == 'processing' %}warning{% elif paper.analysis_status == 'failed' %}danger{% else %}secondary{% endif %} status-badge">
+                                        {{ paper.analysis_status|title }}
                                     </span>
                                 </div>
                                 
@@ -85,20 +85,11 @@
                             </div>
                             <div class="card-footer">
                                 <div class="btn-group w-100" role="group">
-                                    <a href="{% url 'papers:detail' paper.id %}" class="btn btn-outline-primary btn-sm">
-                                        <i class="fas fa-eye me-1"></i>View
+                                    <a href="{% url 'papers:qa' paper.id %}" class="btn btn-primary btn-sm">
+                                        <i class="fas fa-comments me-1"></i>Q&A
                                     </a>
-                                    {% if paper.status == 'completed' %}
-                                        <a href="{% url 'analysis:results' paper.id %}" class="btn btn-outline-success btn-sm">
-                                            <i class="fas fa-chart-bar me-1"></i>Analysis
-                                        </a>
-                                    {% elif paper.status == 'pending' %}
-                                        <button class="btn btn-outline-warning btn-sm start-analysis" data-paper-id="{{ paper.id }}">
-                                            <i class="fas fa-play me-1"></i>Start
-                                        </button>
-                                    {% endif %}
-                                    <a href="{% url 'papers:edit' paper.id %}" class="btn btn-outline-secondary btn-sm">
-                                        <i class="fas fa-edit me-1"></i>Edit
+                                    <a href="{% url 'papers:detail' paper.id %}" class="btn btn-outline-secondary btn-sm">
+                                        <i class="fas fa-eye me-1"></i>Details
                                     </a>
                                 </div>
                             </div>

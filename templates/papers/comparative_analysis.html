@@ -1,0 +1,491 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Comparative Analysis - Research Analyzer{% endblock %}
+
+{% block extra_css %}
+<style>
+    .paper-selection-card {
+        cursor: pointer;
+        transition: all 0.3s ease;
+        border: 2px solid transparent;
+    }
+    
+    .paper-selection-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    
+    .paper-selection-card.selected {
+        border-color: #007bff;
+        background-color: #e3f2fd;
+    }
+    
+    .comparison-result {
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        margin-top: 20px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .aspect-checkbox {
+        margin: 5px 0;
+    }
+    
+    .selected-papers-count {
+        position: sticky;
+        top: 20px;
+        z-index: 100;
+    }
+    
+    .comparison-matrix table {
+        font-size: 0.9em;
+    }
+    
+    .loading-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.5);
+        display: none;
+        justify-content: center;
+        align-items: center;
+        z-index: 9999;
+    }
+    
+    .result-section {
+        margin-bottom: 30px;
+        padding: 20px;
+        border-left: 4px solid #007bff;
+        background: #f8f9fa;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2>
+                    <i class="fas fa-balance-scale text-primary me-2"></i>Comparative Analysis
+                </h2>
+                <nav aria-label="breadcrumb">
+                    <ol class="breadcrumb">
+                        <li class="breadcrumb-item"><a href="{% url 'papers:list' %}">My Papers</a></li>
+                        <li class="breadcrumb-item active">Compare Papers</li>
+                    </ol>
+                </nav>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Paper Selection -->
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-list-check me-2"></i>Select Papers to Compare
+                    </h5>
+                    <small class="text-muted">Choose at least 2 papers for comparison</small>
+                </div>
+                
+                <div class="card-body">
+                    {% if papers %}
+                        <div class="row" id="papers-grid">
+                            {% for paper in papers %}
+                                <div class="col-md-6 col-lg-4 mb-3">
+                                    <div class="card paper-selection-card h-100" data-paper-id="{{ paper.id }}">
+                                        <div class="card-body">
+                                            <div class="form-check position-absolute" style="top: 10px; right: 10px;">
+                                                <input class="form-check-input paper-checkbox" type="checkbox" 
+                                                       value="{{ paper.id }}" id="paper-{{ paper.id }}">
+                                            </div>
+                                            
+                                            <h6 class="card-title">{{ paper.title|truncatechars:60 }}</h6>
+                                            
+                                            <p class="card-text small text-muted">
+                                                {% if paper.authors %}
+                                                    <i class="fas fa-users me-1"></i>{{ paper.authors|truncatechars:50 }}
+                                                {% endif %}
+                                            </p>
+                                            
+                                            <p class="card-text small text-muted">
+                                                <i class="fas fa-calendar me-1"></i>{{ paper.created_at|date:"M d, Y" }}
+                                            </p>
+                                            
+                                            {% if paper.tags.all %}
+                                                <div class="mb-2">
+                                                    {% for tag in paper.tags.all %}
+                                                        <span class="badge" style="background-color: {{ tag.color }}; font-size: 0.7em;">
+                                                            {{ tag.name }}
+                                                        </span>
+                                                    {% endfor %}
+                                                </div>
+                                            {% endif %}
+                                            
+                                            {% if paper.abstract %}
+                                                <p class="card-text small">{{ paper.abstract|truncatechars:100 }}</p>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <div class="text-center py-5">
+                            <i class="fas fa-file-alt fa-3x text-muted mb-3"></i>
+                            <h5>No Papers Found</h5>
+                            <p class="text-muted">Upload some papers first to use comparative analysis.</p>
+                            <a href="{% url 'papers:upload' %}" class="btn btn-primary">
+                                <i class="fas fa-upload me-2"></i>Upload Paper
+                            </a>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Analysis Options -->
+        <div class="col-lg-4">
+            <div class="selected-papers-count">
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0">
+                            <i class="fas fa-cog me-2"></i>Analysis Options
+                        </h6>
+                    </div>
+                    
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label">Selected Papers: <span id="selected-count">0</span></label>
+                            <div id="selected-papers-list" class="small text-muted">
+                                Select papers from the left to begin comparison
+                            </div>
+                        </div>
+                        
+                        <hr>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Comparison Aspects</label>
+                            <div class="aspect-checkbox">
+                                <input type="checkbox" id="methodology" name="aspects" value="methodology" checked>
+                                <label for="methodology" class="form-check-label">Methodology</label>
+                            </div>
+                            <div class="aspect-checkbox">
+                                <input type="checkbox" id="key_findings" name="aspects" value="key_findings" checked>
+                                <label for="key_findings" class="form-check-label">Key Findings</label>
+                            </div>
+                            <div class="aspect-checkbox">
+                                <input type="checkbox" id="limitations" name="aspects" value="limitations" checked>
+                                <label for="limitations" class="form-check-label">Limitations</label>
+                            </div>
+                            <div class="aspect-checkbox">
+                                <input type="checkbox" id="datasets_used" name="aspects" value="datasets_used">
+                                <label for="datasets_used" class="form-check-label">Datasets Used</label>
+                            </div>
+                            <div class="aspect-checkbox">
+                                <input type="checkbox" id="novelty_contribution" name="aspects" value="novelty_contribution">
+                                <label for="novelty_contribution" class="form-check-label">Novelty & Contribution</label>
+                            </div>
+                        </div>
+                        
+                        <hr>
+                        
+                        <div class="d-grid gap-2">
+                            <button id="compare-btn" class="btn btn-primary" disabled>
+                                <i class="fas fa-balance-scale me-2"></i>Compare Papers
+                            </button>
+                            
+                            <button id="literature-review-btn" class="btn btn-outline-success" disabled>
+                                <i class="fas fa-file-alt me-2"></i>Generate Literature Review
+                            </button>
+                        </div>
+                        
+                        <div class="mt-3">
+                            <label for="review-topic" class="form-label small">Literature Review Topic (optional)</label>
+                            <input type="text" class="form-control form-control-sm" id="review-topic" 
+                                   placeholder="e.g., Machine Learning in Healthcare">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Results Section -->
+    <div id="results-section" style="display: none;">
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0" id="results-title">Analysis Results</h5>
+                        <button class="btn btn-outline-secondary btn-sm" onclick="exportResults()">
+                            <i class="fas fa-download me-1"></i>Export Results
+                        </button>
+                    </div>
+                    
+                    <div class="card-body">
+                        <div id="results-content">
+                            <!-- Results will be populated here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Loading Overlay -->
+<div class="loading-overlay" id="loading-overlay">
+    <div class="text-center text-white">
+        <div class="spinner-border mb-3" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <h5>Analyzing Papers...</h5>
+        <p>This may take a few moments</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    let selectedPapers = new Set();
+    const paperCards = document.querySelectorAll('.paper-selection-card');
+    const paperCheckboxes = document.querySelectorAll('.paper-checkbox');
+    const selectedCount = document.getElementById('selected-count');
+    const selectedPapersList = document.getElementById('selected-papers-list');
+    const compareBtn = document.getElementById('compare-btn');
+    const literatureReviewBtn = document.getElementById('literature-review-btn');
+    const loadingOverlay = document.getElementById('loading-overlay');
+    
+    // Paper selection handlers
+    paperCards.forEach(card => {
+        card.addEventListener('click', function(e) {
+            if (e.target.type !== 'checkbox') {
+                const checkbox = this.querySelector('.paper-checkbox');
+                checkbox.checked = !checkbox.checked;
+                checkbox.dispatchEvent(new Event('change'));
+            }
+        });
+    });
+    
+    paperCheckboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', function() {
+            const paperId = this.value;
+            const card = this.closest('.paper-selection-card');
+            
+            if (this.checked) {
+                selectedPapers.add(paperId);
+                card.classList.add('selected');
+            } else {
+                selectedPapers.delete(paperId);
+                card.classList.remove('selected');
+            }
+            
+            updateSelectedPapersDisplay();
+        });
+    });
+    
+    function updateSelectedPapersDisplay() {
+        selectedCount.textContent = selectedPapers.size;
+        
+        if (selectedPapers.size === 0) {
+            selectedPapersList.innerHTML = 'Select papers from the left to begin comparison';
+            compareBtn.disabled = true;
+            literatureReviewBtn.disabled = true;
+        } else {
+            const paperTitles = Array.from(selectedPapers).map(id => {
+                const card = document.querySelector(`[data-paper-id="${id}"]`);
+                return card.querySelector('.card-title').textContent.substring(0, 30) + '...';
+            });
+            
+            selectedPapersList.innerHTML = paperTitles.map(title => 
+                `<div class="small">• ${title}</div>`
+            ).join('');
+            
+            compareBtn.disabled = selectedPapers.size < 2;
+            literatureReviewBtn.disabled = selectedPapers.size === 0;
+        }
+    }
+    
+    // Compare papers
+    compareBtn.addEventListener('click', function() {
+        if (selectedPapers.size < 2) {
+            alert('Please select at least 2 papers to compare.');
+            return;
+        }
+        
+        const aspects = Array.from(document.querySelectorAll('input[name="aspects"]:checked'))
+                            .map(cb => cb.value);
+        
+        performComparison(Array.from(selectedPapers), aspects);
+    });
+    
+    // Generate literature review
+    literatureReviewBtn.addEventListener('click', function() {
+        if (selectedPapers.size === 0) {
+            alert('Please select papers for literature review.');
+            return;
+        }
+        
+        const topic = document.getElementById('review-topic').value.trim();
+        generateLiteratureReview(Array.from(selectedPapers), topic);
+    });
+    
+    function performComparison(paperIds, aspects) {
+        loadingOverlay.style.display = 'flex';
+        
+        const formData = new FormData();
+        paperIds.forEach(id => formData.append('paper_ids', id));
+        aspects.forEach(aspect => formData.append('aspects', aspect));
+        formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+        
+        fetch('{% url "papers:compare_papers" %}', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            loadingOverlay.style.display = 'none';
+            
+            if (data.success) {
+                displayComparisonResults(data.comparison);
+            } else {
+                alert('Error: ' + (data.error || 'Comparison failed'));
+            }
+        })
+        .catch(error => {
+            loadingOverlay.style.display = 'none';
+            alert('Network error: ' + error.message);
+        });
+    }
+    
+    function generateLiteratureReview(paperIds, topic) {
+        loadingOverlay.style.display = 'flex';
+        
+        const formData = new FormData();
+        paperIds.forEach(id => formData.append('paper_ids', id));
+        if (topic) formData.append('topic', topic);
+        formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+        
+        fetch('{% url "papers:generate_literature_review" %}', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            loadingOverlay.style.display = 'none';
+            
+            if (data.success) {
+                displayLiteratureReview(data.literature_review);
+            } else {
+                alert('Error: ' + (data.error || 'Literature review generation failed'));
+            }
+        })
+        .catch(error => {
+            loadingOverlay.style.display = 'none';
+            alert('Network error: ' + error.message);
+        });
+    }
+    
+    function displayComparisonResults(comparison) {
+        const resultsSection = document.getElementById('results-section');
+        const resultsTitle = document.getElementById('results-title');
+        const resultsContent = document.getElementById('results-content');
+        
+        resultsTitle.textContent = `Comparative Analysis (${comparison.total_papers} papers)`;
+        
+        resultsContent.innerHTML = `
+            <div class="result-section">
+                <h6 class="text-primary mb-3">
+                    <i class="fas fa-chart-bar me-2"></i>Analysis Summary
+                </h6>
+                <p>${comparison.analysis.summary}</p>
+            </div>
+            
+            <div class="result-section">
+                <h6 class="text-primary mb-3">
+                    <i class="fas fa-file-alt me-2"></i>Detailed Analysis
+                </h6>
+                <div style="white-space: pre-wrap; line-height: 1.6;">${comparison.analysis.full_analysis}</div>
+            </div>
+            
+            <div class="result-section">
+                <h6 class="text-primary mb-3">
+                    <i class="fas fa-info-circle me-2"></i>Papers Analyzed
+                </h6>
+                <div class="row">
+                    ${comparison.papers.map(paper => `
+                        <div class="col-md-6 mb-2">
+                            <div class="border rounded p-2">
+                                <strong>${paper.title}</strong><br>
+                                <small class="text-muted">${paper.authors} (${paper.publication_date})</small>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+        
+        resultsSection.style.display = 'block';
+        resultsSection.scrollIntoView({ behavior: 'smooth' });
+    }
+    
+    function displayLiteratureReview(review) {
+        const resultsSection = document.getElementById('results-section');
+        const resultsTitle = document.getElementById('results-title');
+        const resultsContent = document.getElementById('results-content');
+        
+        resultsTitle.textContent = `Literature Review: ${review.topic}`;
+        
+        resultsContent.innerHTML = `
+            <div class="result-section">
+                <h6 class="text-primary mb-3">
+                    <i class="fas fa-info-circle me-2"></i>Review Information
+                </h6>
+                <p><strong>Papers Included:</strong> ${review.papers_included}</p>
+                <p><strong>Word Count:</strong> ${review.word_count}</p>
+                <p><strong>Generated:</strong> ${review.generated_at}</p>
+            </div>
+            
+            <div class="result-section">
+                <h6 class="text-primary mb-3">
+                    <i class="fas fa-file-alt me-2"></i>Literature Review
+                </h6>
+                <div style="white-space: pre-wrap; line-height: 1.8; font-size: 1.05em;">${review.literature_review}</div>
+            </div>
+        `;
+        
+        resultsSection.style.display = 'block';
+        resultsSection.scrollIntoView({ behavior: 'smooth' });
+    }
+    
+    // Export functionality
+    window.exportResults = function() {
+        const resultsContent = document.getElementById('results-content');
+        if (!resultsContent || !resultsContent.innerHTML.trim()) {
+            alert('No results to export. Please run an analysis first.');
+            return;
+        }
+        
+        // Simple text export - could be enhanced to PDF
+        const text = resultsContent.innerText;
+        const blob = new Blob([text], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'comparative_analysis_results.txt';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
+});
+</script>
+{% endblock %}

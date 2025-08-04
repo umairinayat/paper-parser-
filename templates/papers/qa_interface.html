@@ -1,0 +1,413 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Q&A - {{ paper.title }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .chat-container {
+        height: 600px;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        overflow-y: auto;
+        padding: 20px;
+        background-color: #f8f9fa;
+    }
+    
+    .question-item {
+        margin-bottom: 30px;
+        padding: 15px;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .question {
+        color: #007bff;
+        font-weight: 600;
+        margin-bottom: 10px;
+    }
+    
+    .answer {
+        color: #333;
+        line-height: 1.6;
+        margin-bottom: 10px;
+    }
+    
+    .sources {
+        background: #f8f9fa;
+        border-left: 4px solid #007bff;
+        padding: 10px 15px;
+        margin-top: 10px;
+        font-size: 0.9em;
+    }
+    
+    .source-item {
+        margin-bottom: 8px;
+        padding: 5px;
+        background: white;
+        border-radius: 4px;
+    }
+    
+    .processing-status {
+        text-align: center;
+        padding: 20px;
+        color: #6c757d;
+    }
+    
+    .suggestion-btn {
+        margin: 5px;
+        font-size: 0.9em;
+    }
+    
+    .paper-info {
+        background: #e9ecef;
+        padding: 15px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+    }
+    
+    .loading {
+        text-align: center;
+        padding: 20px;
+        color: #007bff;
+    }
+    
+    .error {
+        color: #dc3545;
+        background: #f8d7da;
+        padding: 10px;
+        border-radius: 4px;
+        margin: 10px 0;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-12">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="{% url 'papers:list' %}">My Papers</a></li>
+                    <li class="breadcrumb-item"><a href="{% url 'papers:detail' paper.id %}">{{ paper.title|truncatechars:50 }}</a></li>
+                    <li class="breadcrumb-item active">Q&A</li>
+                </ol>
+            </nav>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Ask Questions About This Paper</h5>
+                    <div>
+                        {% if not is_processed %}
+                            <button id="process-btn" class="btn btn-warning btn-sm">
+                                <i class="fas fa-cogs"></i> Process Paper for Q&A
+                            </button>
+                        {% else %}
+                            <span class="badge bg-success">Ready for Q&A</span>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <div class="card-body">
+                    <!-- Paper Info -->
+                    <div class="paper-info">
+                        <h6><strong>{{ paper.title }}</strong></h6>
+                        <p class="mb-1"><strong>Authors:</strong> {{ paper.authors|default:"Not specified" }}</p>
+                        {% if paper.abstract %}
+                            <p class="mb-0"><strong>Abstract:</strong> {{ paper.abstract|truncatechars:200 }}</p>
+                        {% endif %}
+                    </div>
+
+                    <!-- Chat Container -->
+                    <div id="chat-container" class="chat-container">
+                        {% if questions %}
+                            {% for q in questions %}
+                                <div class="question-item">
+                                    <div class="question">
+                                        <i class="fas fa-question-circle"></i> {{ q.question }}
+                                    </div>
+                                    <div class="answer">
+                                        <i class="fas fa-robot"></i> {{ q.answer|linebreaks }}
+                                    </div>
+                                    {% if q.sources %}
+                                        <div class="sources">
+                                            <small><strong>Sources:</strong></small>
+                                            {% for source in q.sources %}
+                                                <div class="source-item">
+                                                    <small>Chunk {{ source.chunk_id }}: {{ source.content_preview }}</small>
+                                                </div>
+                                            {% endfor %}
+                                        </div>
+                                    {% endif %}
+                                    <small class="text-muted">
+                                        {{ q.created_at|date:"M d, Y H:i" }}
+                                        {% if q.processing_time %}
+                                            ({{ q.processing_time|floatformat:2 }}s)
+                                        {% endif %}
+                                    </small>
+                                </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="processing-status">
+                                {% if is_processed %}
+                                    <p>Start asking questions about this paper!</p>
+                                {% else %}
+                                    <p>Please process the paper first to enable Q&A functionality.</p>
+                                {% endif %}
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- Question Input -->
+                    <div class="mt-3">
+                        <form id="question-form">
+                            {% csrf_token %}
+                            <div class="input-group">
+                                <input type="text" id="question-input" class="form-control" 
+                                       placeholder="Ask a question about this paper..." 
+                                       {% if not is_processed %}disabled{% endif %}>
+                                <button type="submit" class="btn btn-primary" 
+                                        {% if not is_processed %}disabled{% endif %}>
+                                    <i class="fas fa-paper-plane"></i> Ask
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <!-- Quick Actions -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h6 class="mb-0">Quick Actions</h6>
+                </div>
+                <div class="card-body">
+                    <button id="summary-btn" class="btn btn-outline-info btn-sm w-100 mb-2" 
+                            {% if not is_processed %}disabled{% endif %}>
+                        <i class="fas fa-file-alt"></i> Generate Summary
+                    </button>
+                    <button id="suggestions-btn" class="btn btn-outline-secondary btn-sm w-100" 
+                            {% if not is_processed %}disabled{% endif %}>
+                        <i class="fas fa-lightbulb"></i> Get Question Suggestions
+                    </button>
+                </div>
+            </div>
+
+            <!-- Question Suggestions -->
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0">Suggested Questions</h6>
+                </div>
+                <div class="card-body" id="suggestions-container">
+                    <p class="text-muted">Click "Get Question Suggestions" to see suggested questions.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Loading Modal -->
+<div class="modal fade" id="loadingModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-body text-center">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-3 mb-0">Processing your request...</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const questionForm = document.getElementById('question-form');
+    const questionInput = document.getElementById('question-input');
+    const chatContainer = document.getElementById('chat-container');
+    const processBtn = document.getElementById('process-btn');
+    const summaryBtn = document.getElementById('summary-btn');
+    const suggestionsBtn = document.getElementById('suggestions-btn');
+    const suggestionsContainer = document.getElementById('suggestions-container');
+    const loadingModal = new bootstrap.Modal(document.getElementById('loadingModal'));
+    
+    // Process paper for Q&A
+    if (processBtn) {
+        processBtn.addEventListener('click', function() {
+            loadingModal.show();
+            
+            fetch(`{% url 'papers:process_paper' paper.id %}`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                },
+            })
+            .then(response => response.json())
+            .then(data => {
+                loadingModal.hide();
+                if (data.success) {
+                    location.reload(); // Reload to update UI
+                } else {
+                    showError(data.error || 'Failed to process paper');
+                }
+            })
+            .catch(error => {
+                loadingModal.hide();
+                showError('Network error: ' + error.message);
+            });
+        });
+    }
+    
+    // Submit question
+    questionForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const question = questionInput.value.trim();
+        if (!question) return;
+        
+        // Add user question to chat
+        addQuestionToChat(question, 'Processing...');
+        questionInput.value = '';
+        
+        // Send question to server
+        fetch(`{% url 'papers:ask_question' paper.id %}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+            },
+            body: `question=${encodeURIComponent(question)}`
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                updateLastAnswer(data.answer, data.sources, data.timestamp, data.processing_time);
+            } else {
+                updateLastAnswer('Error: ' + (data.error || 'Failed to get answer'), [], null, null);
+            }
+        })
+        .catch(error => {
+            updateLastAnswer('Network error: ' + error.message, [], null, null);
+        });
+    });
+    
+    // Get paper summary
+    summaryBtn.addEventListener('click', function() {
+        loadingModal.show();
+        
+        fetch(`{% url 'papers:paper_summary' paper.id %}`)
+        .then(response => response.json())
+        .then(data => {
+            loadingModal.hide();
+            if (data.success) {
+                addQuestionToChat('Please provide a summary of this paper', data.summary);
+            } else {
+                showError(data.error || 'Failed to generate summary');
+            }
+        })
+        .catch(error => {
+            loadingModal.hide();
+            showError('Network error: ' + error.message);
+        });
+    });
+    
+    // Get question suggestions
+    suggestionsBtn.addEventListener('click', function() {
+        loadingModal.show();
+        
+        fetch(`{% url 'papers:question_suggestions' paper.id %}`)
+        .then(response => response.json())
+        .then(data => {
+            loadingModal.hide();
+            if (data.success) {
+                displaySuggestions(data.suggestions);
+            } else {
+                showError(data.error || 'Failed to get suggestions');
+            }
+        })
+        .catch(error => {
+            loadingModal.hide();
+            showError('Network error: ' + error.message);
+        });
+    });
+    
+    function addQuestionToChat(question, answer) {
+        const questionItem = document.createElement('div');
+        questionItem.className = 'question-item';
+        questionItem.innerHTML = `
+            <div class="question">
+                <i class="fas fa-question-circle"></i> ${question}
+            </div>
+            <div class="answer">
+                <i class="fas fa-robot"></i> <span class="answer-text">${answer}</span>
+            </div>
+        `;
+        
+        chatContainer.appendChild(questionItem);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+    
+    function updateLastAnswer(answer, sources, timestamp, processingTime) {
+        const lastAnswer = chatContainer.querySelector('.question-item:last-child .answer-text');
+        if (lastAnswer) {
+            lastAnswer.innerHTML = answer.replace(/\n/g, '<br>');
+            
+            // Add sources if available
+            if (sources && sources.length > 0) {
+                const sourcesDiv = document.createElement('div');
+                sourcesDiv.className = 'sources';
+                sourcesDiv.innerHTML = `
+                    <small><strong>Sources:</strong></small>
+                    ${sources.map(source => `
+                        <div class="source-item">
+                            <small>Chunk ${source.chunk_id}: ${source.content_preview}</small>
+                        </div>
+                    `).join('')}
+                `;
+                lastAnswer.parentElement.appendChild(sourcesDiv);
+            }
+            
+            // Add timestamp
+            if (timestamp) {
+                const timeDiv = document.createElement('small');
+                timeDiv.className = 'text-muted';
+                timeDiv.innerHTML = `${new Date(timestamp).toLocaleString()}${processingTime ? ` (${processingTime.toFixed(2)}s)` : ''}`;
+                lastAnswer.parentElement.appendChild(timeDiv);
+            }
+        }
+    }
+    
+    function displaySuggestions(suggestions) {
+        suggestionsContainer.innerHTML = suggestions.map(suggestion => `
+            <button class="btn btn-outline-primary btn-sm suggestion-btn w-100 mb-2" 
+                    onclick="askSuggestion('${suggestion.replace(/'/g, '\\\'')}')">${suggestion}</button>
+        `).join('');
+    }
+    
+    function showError(message) {
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'error';
+        errorDiv.textContent = message;
+        chatContainer.appendChild(errorDiv);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+        
+        setTimeout(() => errorDiv.remove(), 5000);
+    }
+    
+    // Global function for suggestion buttons
+    window.askSuggestion = function(question) {
+        questionInput.value = question;
+        questionForm.dispatchEvent(new Event('submit'));
+    };
+});
+</script>
+{% endblock %}

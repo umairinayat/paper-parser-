@@ -100,8 +100,8 @@
                                         <i class="fas fa-calendar me-1"></i>{{ paper.created_at|date:"M d, Y" }}
                                     </small>
                                 </div>
-                                <span class="badge bg-{% if paper.status == 'completed' %}success{% elif paper.status == 'processing' %}warning{% else %}secondary{% endif %} rounded-pill">
-                                    {{ paper.status|title }}
+                                <span class="badge bg-{% if paper.analysis_status == 'completed' %}success{% elif paper.analysis_status == 'processing' %}warning{% else %}secondary{% endif %} rounded-pill">
+                                    {{ paper.analysis_status|title }}
                                 </span>
                             </div>
                         {% endfor %}

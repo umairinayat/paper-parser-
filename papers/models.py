@@ -112,6 +112,9 @@ class Paper(models.Model):
     # User association
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, null=True, blank=True)
     
+    # Tags for organization
+    tags = models.ManyToManyField('PaperTag', blank=True, related_name='papers')
+    
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -328,4 +331,114 @@ class SearchResult(models.Model):
     
     def __str__(self):
         return f"{self.paper.title} (rank: {self.rank})"
+
+
+class QASession(models.Model):
+    """Model for storing question-answer sessions for papers."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    paper = models.ForeignKey(Paper, on_delete=models.CASCADE, related_name='qa_sessions')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    session_name = models.CharField(max_length=200, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-updated_at']
+        verbose_name = 'Q&A Session'
+        verbose_name_plural = 'Q&A Sessions'
+    
+    def __str__(self):
+        return f"Q&A Session for {self.paper.title}"
+    
+    @property
+    def question_count(self):
+        return self.questions.count()
+
+
+class PaperQuestion(models.Model):
+    """Model for storing individual questions and answers about papers."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    qa_session = models.ForeignKey(QASession, on_delete=models.CASCADE, related_name='questions')
+    question = models.TextField()
+    answer = models.TextField()
+    sources = models.JSONField(default=list, blank=True)  # Store relevant chunks/sources
+    confidence_score = models.FloatField(null=True, blank=True)
+    model_used = models.CharField(max_length=100, blank=True)
+    processing_time = models.FloatField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['created_at']
+        verbose_name = 'Paper Question'
+        verbose_name_plural = 'Paper Questions'
+    
+    def __str__(self):
+        return f"Q: {self.question[:50]}..."
+
+
+class QuestionTemplate(models.Model):
+    """Pre-built question templates for different research areas."""
+    CATEGORY_CHOICES = [
+        ('methodology', 'Methodology'),
+        ('results', 'Results & Findings'),
+        ('limitations', 'Limitations'),
+        ('future_work', 'Future Work'),
+        ('background', 'Background & Literature'),
+        ('impact', 'Impact & Applications'),
+        ('data', 'Data & Analysis'),
+        ('comparison', 'Comparison & Evaluation'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    question_text = models.TextField()
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES)
+    description = models.CharField(max_length=200, blank=True)
+    is_active = models.BooleanField(default=True)
+    usage_count = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['category', '-usage_count']
+        verbose_name = 'Question Template'
+        verbose_name_plural = 'Question Templates'
+    
+    def __str__(self):
+        return f"{self.get_category_display()}: {self.question_text[:50]}..."
+
+
+class PaperTag(models.Model):
+    """Tags for organizing papers."""
+    name = models.CharField(max_length=50, unique=True)
+    color = models.CharField(max_length=7, default='#007bff')  # Hex color code
+    description = models.CharField(max_length=200, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['name']
+        verbose_name = 'Paper Tag'
+        verbose_name_plural = 'Paper Tags'
+    
+    def __str__(self):
+        return self.name
+
+
+class ResearchNote(models.Model):
+    """Research notes for papers."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    paper = models.ForeignKey(Paper, on_delete=models.CASCADE, related_name='notes')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    title = models.CharField(max_length=200)
+    content = models.TextField()
+    is_private = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-updated_at']
+        verbose_name = 'Research Note'
+        verbose_name_plural = 'Research Notes'
+    
+    def __str__(self):
+        return f"{self.title} - {self.paper.title[:30]}..."
 

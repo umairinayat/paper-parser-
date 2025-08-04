@@ -1,0 +1,658 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Q&A - {{ paper.title }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .chat-container {
+        height: 600px;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        overflow-y: auto;
+        padding: 20px;
+        background-color: #f8f9fa;
+    }
+    
+    .question-item {
+        margin-bottom: 30px;
+        padding: 15px;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .question {
+        color: #007bff;
+        font-weight: 600;
+        margin-bottom: 10px;
+    }
+    
+    .answer {
+        color: #333;
+        line-height: 1.6;
+        margin-bottom: 10px;
+    }
+    
+    .sources {
+        background: #f8f9fa;
+        border-left: 4px solid #007bff;
+        padding: 10px 15px;
+        margin-top: 10px;
+        font-size: 0.9em;
+    }
+    
+    .source-item {
+        margin-bottom: 8px;
+        padding: 5px;
+        background: white;
+        border-radius: 4px;
+    }
+    
+    .template-category {
+        margin-bottom: 15px;
+    }
+    
+    .template-btn {
+        margin: 3px;
+        font-size: 0.85em;
+        border-radius: 20px;
+    }
+    
+    .paper-tag {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 0.8em;
+        color: white;
+        margin: 2px;
+    }
+    
+    .note-item {
+        background: #fff3cd;
+        border: 1px solid #ffeaa7;
+        border-radius: 6px;
+        padding: 10px;
+        margin-bottom: 10px;
+    }
+    
+    .tabs-container {
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    
+    .nav-tabs .nav-link {
+        border-radius: 0;
+    }
+    
+    .tab-content {
+        padding: 15px;
+        background: white;
+    }
+    
+    .processing-status {
+        text-align: center;
+        padding: 20px;
+        color: #6c757d;
+    }
+    
+    .loading {
+        text-align: center;
+        padding: 20px;
+        color: #007bff;
+    }
+    
+    .error {
+        color: #dc3545;
+        background: #f8d7da;
+        padding: 10px;
+        border-radius: 4px;
+        margin: 10px 0;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-12">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="{% url 'papers:list' %}">My Papers</a></li>
+                    <li class="breadcrumb-item"><a href="{% url 'papers:detail' paper.id %}">{{ paper.title|truncatechars:50 }}</a></li>
+                    <li class="breadcrumb-item active">Q&A</li>
+                </ol>
+            </nav>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Main Q&A Interface -->
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="fas fa-comments text-primary me-2"></i>Ask Questions About This Paper
+                    </h5>
+                    <div>
+                        {% if not is_processed %}
+                            <button id="process-btn" class="btn btn-warning btn-sm">
+                                <i class="fas fa-cogs"></i> Process Paper for Q&A
+                            </button>
+                        {% else %}
+                            <span class="badge bg-success">Ready for Q&A</span>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <div class="card-body">
+                    <!-- Paper Info with Tags -->
+                    <div class="paper-info mb-3">
+                        <h6><strong>{{ paper.title }}</strong></h6>
+                        <div class="mb-2">
+                            {% for tag in paper_tags %}
+                                <span class="paper-tag" style="background-color: {{ tag.color }}">
+                                    {{ tag.name }}
+                                </span>
+                            {% endfor %}
+                            <button class="btn btn-outline-secondary btn-sm" id="manage-tags-btn">
+                                <i class="fas fa-tags"></i> Manage Tags
+                            </button>
+                        </div>
+                        <p class="mb-1"><strong>Authors:</strong> {{ paper.authors|default:"Not specified" }}</p>
+                        {% if paper.abstract %}
+                            <p class="mb-0"><strong>Abstract:</strong> {{ paper.abstract|truncatechars:200 }}</p>
+                        {% endif %}
+                    </div>
+
+                    <!-- Chat Container -->
+                    <div id="chat-container" class="chat-container">
+                        {% if questions %}
+                            {% for q in questions %}
+                                <div class="question-item">
+                                    <div class="question">
+                                        <i class="fas fa-question-circle"></i> {{ q.question }}
+                                    </div>
+                                    <div class="answer">
+                                        <i class="fas fa-robot"></i> {{ q.answer|linebreaks }}
+                                    </div>
+                                    {% if q.sources %}
+                                        <div class="sources">
+                                            <small><strong>Sources:</strong></small>
+                                            {% for source in q.sources %}
+                                                <div class="source-item">
+                                                    <small>Chunk {{ source.chunk_id }}: {{ source.content_preview }}</small>
+                                                </div>
+                                            {% endfor %}
+                                        </div>
+                                    {% endif %}
+                                    <small class="text-muted">
+                                        {{ q.created_at|date:"M d, Y H:i" }}
+                                        {% if q.processing_time %}
+                                            ({{ q.processing_time|floatformat:2 }}s)
+                                        {% endif %}
+                                    </small>
+                                </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="processing-status">
+                                {% if is_processed %}
+                                    <p>Start asking questions about this paper!</p>
+                                {% else %}
+                                    <p>Please process the paper first to enable Q&A functionality.</p>
+                                {% endif %}
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- Question Input -->
+                    <div class="mt-3">
+                        <form id="question-form">
+                            {% csrf_token %}
+                            <div class="input-group">
+                                <input type="text" id="question-input" class="form-control" 
+                                       placeholder="Ask a question about this paper..." 
+                                       {% if not is_processed %}disabled{% endif %}>
+                                <button type="submit" class="btn btn-primary" 
+                                        {% if not is_processed %}disabled{% endif %}>
+                                    <i class="fas fa-paper-plane"></i> Ask
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sidebar with Tools -->
+        <div class="col-lg-4">
+            <div class="tabs-container">
+                <ul class="nav nav-tabs" id="toolTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="templates-tab" data-bs-toggle="tab" 
+                                data-bs-target="#templates" type="button" role="tab">
+                            <i class="fas fa-list"></i> Templates
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="notes-tab" data-bs-toggle="tab" 
+                                data-bs-target="#notes" type="button" role="tab">
+                            <i class="fas fa-sticky-note"></i> Notes
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="actions-tab" data-bs-toggle="tab" 
+                                data-bs-target="#actions" type="button" role="tab">
+                            <i class="fas fa-tools"></i> Actions
+                        </button>
+                    </li>
+                </ul>
+                
+                <div class="tab-content" id="toolTabsContent">
+                    <!-- Question Templates Tab -->
+                    <div class="tab-pane fade show active" id="templates" role="tabpanel">
+                        <h6>Question Templates</h6>
+                        <p class="text-muted small">Click any template to use it as your question.</p>
+                        
+                        {% for category, templates in templates_by_category.items %}
+                            <div class="template-category">
+                                <h6 class="text-primary">{{ templates.0.get_category_display }}</h6>
+                                {% for template in templates %}
+                                    <button class="btn btn-outline-primary template-btn" 
+                                            data-template-id="{{ template.id }}"
+                                            data-question="{{ template.question_text }}"
+                                            title="{{ template.description }}">
+                                        {{ template.question_text|truncatechars:60 }}
+                                    </button>
+                                {% endfor %}
+                            </div>
+                        {% endfor %}
+                    </div>
+                    
+                    <!-- Research Notes Tab -->
+                    <div class="tab-pane fade" id="notes" role="tabpanel">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h6>Research Notes</h6>
+                            <button class="btn btn-primary btn-sm" id="add-note-btn">
+                                <i class="fas fa-plus"></i> Add Note
+                            </button>
+                        </div>
+                        
+                        <div id="notes-container">
+                            {% for note in notes %}
+                                <div class="note-item" data-note-id="{{ note.id }}">
+                                    <div class="d-flex justify-content-between">
+                                        <h6>{{ note.title }}</h6>
+                                        <div>
+                                            <button class="btn btn-sm btn-outline-secondary edit-note-btn" 
+                                                    data-note-id="{{ note.id }}">
+                                                <i class="fas fa-edit"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-danger delete-note-btn" 
+                                                    data-note-id="{{ note.id }}">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <p class="mb-1">{{ note.content|truncatechars:100 }}</p>
+                                    <small class="text-muted">{{ note.updated_at|date:"M d, Y" }}</small>
+                                </div>
+                            {% empty %}
+                                <p class="text-muted">No notes yet. Create your first research note!</p>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    
+                    <!-- Quick Actions Tab -->
+                    <div class="tab-pane fade" id="actions" role="tabpanel">
+                        <h6>Quick Actions</h6>
+                        
+                        <button id="summary-btn" class="btn btn-outline-info btn-sm w-100 mb-2" 
+                                {% if not is_processed %}disabled{% endif %}>
+                            <i class="fas fa-file-alt"></i> Generate Summary
+                        </button>
+                        
+                        <button id="suggestions-btn" class="btn btn-outline-secondary btn-sm w-100 mb-2" 
+                                {% if not is_processed %}disabled{% endif %}>
+                            <i class="fas fa-lightbulb"></i> Get Question Suggestions
+                        </button>
+                        
+                        <button id="export-qa-btn" class="btn btn-outline-success btn-sm w-100 mb-2" 
+                                {% if not questions %}disabled{% endif %}>
+                            <i class="fas fa-download"></i> Export Q&A Session
+                        </button>
+                        
+                        <hr>
+                        
+                        <div class="suggestions-container" id="suggestions-container">
+                            <p class="text-muted small">AI-generated suggestions will appear here.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modals -->
+<!-- Tag Management Modal -->
+<div class="modal fade" id="tagModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Manage Tags</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Available Tags</label>
+                    <div id="available-tags">
+                        {% for tag in available_tags %}
+                            <button class="btn btn-outline-primary btn-sm me-1 mb-1 add-tag-btn" 
+                                    data-tag-id="{{ tag.id }}" style="border-color: {{ tag.color }}">
+                                {{ tag.name }}
+                            </button>
+                        {% endfor %}
+                    </div>
+                </div>
+                
+                <hr>
+                
+                <div class="mb-3">
+                    <label class="form-label">Create New Tag</label>
+                    <div class="row">
+                        <div class="col-8">
+                            <input type="text" class="form-control" id="new-tag-name" placeholder="Tag name">
+                        </div>
+                        <div class="col-4">
+                            <input type="color" class="form-control" id="new-tag-color" value="#007bff">
+                        </div>
+                    </div>
+                    <button class="btn btn-primary btn-sm mt-2" id="create-tag-btn">Create Tag</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Note Modal -->
+<div class="modal fade" id="noteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Research Note</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Title</label>
+                    <input type="text" class="form-control" id="note-title" placeholder="Note title">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Content</label>
+                    <textarea class="form-control" id="note-content" rows="5" placeholder="Write your research note here..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="save-note-btn">Save Note</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Loading Modal -->
+<div class="modal fade" id="loadingModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-body text-center">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-3 mb-0">Processing your request...</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const questionForm = document.getElementById('question-form');
+    const questionInput = document.getElementById('question-input');
+    const chatContainer = document.getElementById('chat-container');
+    const loadingModal = new bootstrap.Modal(document.getElementById('loadingModal'));
+    const tagModal = new bootstrap.Modal(document.getElementById('tagModal'));
+    const noteModal = new bootstrap.Modal(document.getElementById('noteModal'));
+    let currentNoteId = null;
+    
+    // Process paper for Q&A
+    const processBtn = document.getElementById('process-btn');
+    if (processBtn) {
+        processBtn.addEventListener('click', function() {
+            loadingModal.show();
+            
+            fetch(`{% url 'papers:process_paper' paper.id %}`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                },
+            })
+            .then(response => response.json())
+            .then(data => {
+                loadingModal.hide();
+                if (data.success) {
+                    location.reload();
+                } else {
+                    showError(data.error || 'Failed to process paper');
+                }
+            })
+            .catch(error => {
+                loadingModal.hide();
+                showError('Network error: ' + error.message);
+            });
+        });
+    }
+    
+    // Submit question
+    questionForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const question = questionInput.value.trim();
+        if (!question) return;
+        
+        addQuestionToChat(question, 'Processing...');
+        questionInput.value = '';
+        
+        fetch(`{% url 'papers:ask_question' paper.id %}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+            },
+            body: `question=${encodeURIComponent(question)}`
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                updateLastAnswer(data.answer, data.sources, data.timestamp, data.processing_time);
+                
+                // Show follow-up questions
+                if (data.followup_questions && data.followup_questions.length > 0) {
+                    displayFollowupQuestions(data.followup_questions);
+                }
+            } else {
+                updateLastAnswer('Error: ' + (data.error || 'Failed to get answer'), [], null, null);
+            }
+        })
+        .catch(error => {
+            updateLastAnswer('Network error: ' + error.message, [], null, null);
+        });
+    });
+    
+    // Question templates
+    document.querySelectorAll('.template-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const question = this.dataset.question;
+            const templateId = this.dataset.templateId;
+            
+            // Track usage
+            fetch(`{% url 'papers:use_template' '00000000-0000-0000-0000-000000000000' %}`.replace('00000000-0000-0000-0000-000000000000', templateId), {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                },
+            });
+            
+            questionInput.value = question;
+            questionForm.dispatchEvent(new Event('submit'));
+        });
+    });
+    
+    // Tag management
+    document.getElementById('manage-tags-btn').addEventListener('click', function() {
+        tagModal.show();
+    });
+    
+    document.getElementById('create-tag-btn').addEventListener('click', function() {
+        const name = document.getElementById('new-tag-name').value.trim();
+        const color = document.getElementById('new-tag-color').value;
+        
+        if (!name) return;
+        
+        fetch(`{% url 'papers:create_tag' %}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+            },
+            body: `name=${encodeURIComponent(name)}&color=${encodeURIComponent(color)}`
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                showError(data.error);
+            }
+        });
+    });
+    
+    // Notes management
+    document.getElementById('add-note-btn').addEventListener('click', function() {
+        currentNoteId = null;
+        document.getElementById('note-title').value = '';
+        document.getElementById('note-content').value = '';
+        document.querySelector('#noteModal .modal-title').textContent = 'Add Research Note';
+        noteModal.show();
+    });
+    
+    document.getElementById('save-note-btn').addEventListener('click', function() {
+        const title = document.getElementById('note-title').value.trim();
+        const content = document.getElementById('note-content').value.trim();
+        
+        if (!title || !content) return;
+        
+        const url = currentNoteId ? 
+            `{% url 'papers:update_note' paper.id '00000000-0000-0000-0000-000000000000' %}`.replace('00000000-0000-0000-0000-000000000000', currentNoteId) :
+            `{% url 'papers:create_note' paper.id %}`;
+        
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+            },
+            body: `title=${encodeURIComponent(title)}&content=${encodeURIComponent(content)}`
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                noteModal.hide();
+                location.reload();
+            } else {
+                showError(data.error);
+            }
+        });
+    });
+    
+    // Export Q&A
+    document.getElementById('export-qa-btn').addEventListener('click', function() {
+        window.open(`{% url 'papers:export_qa' paper.id %}`, '_blank');
+    });
+    
+    // Helper functions
+    function addQuestionToChat(question, answer) {
+        const questionItem = document.createElement('div');
+        questionItem.className = 'question-item';
+        questionItem.innerHTML = `
+            <div class="question">
+                <i class="fas fa-question-circle"></i> ${question}
+            </div>
+            <div class="answer">
+                <i class="fas fa-robot"></i> <span class="answer-text">${answer}</span>
+            </div>
+        `;
+        
+        chatContainer.appendChild(questionItem);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+    
+    function updateLastAnswer(answer, sources, timestamp, processingTime) {
+        const lastAnswer = chatContainer.querySelector('.question-item:last-child .answer-text');
+        if (lastAnswer) {
+            lastAnswer.innerHTML = answer.replace(/\n/g, '<br>');
+            
+            if (sources && sources.length > 0) {
+                const sourcesDiv = document.createElement('div');
+                sourcesDiv.className = 'sources';
+                sourcesDiv.innerHTML = `
+                    <small><strong>Sources:</strong></small>
+                    ${sources.map(source => `
+                        <div class="source-item">
+                            <small>Chunk ${source.chunk_id}: ${source.content_preview}</small>
+                        </div>
+                    `).join('')}
+                `;
+                lastAnswer.parentElement.appendChild(sourcesDiv);
+            }
+            
+            if (timestamp) {
+                const timeDiv = document.createElement('small');
+                timeDiv.className = 'text-muted';
+                timeDiv.innerHTML = `${new Date(timestamp).toLocaleString()}${processingTime ? ` (${processingTime.toFixed(2)}s)` : ''}`;
+                lastAnswer.parentElement.appendChild(timeDiv);
+            }
+        }
+    }
+    
+    function displayFollowupQuestions(questions) {
+        const suggestionsContainer = document.getElementById('suggestions-container');
+        suggestionsContainer.innerHTML = '<h6 class="text-primary">Follow-up Questions:</h6>';
+        
+        questions.forEach(question => {
+            const btn = document.createElement('button');
+            btn.className = 'btn btn-outline-primary btn-sm w-100 mb-2';
+            btn.textContent = question;
+            btn.onclick = () => {
+                questionInput.value = question;
+                questionForm.dispatchEvent(new Event('submit'));
+            };
+            suggestionsContainer.appendChild(btn);
+        });
+    }
+    
+    function showError(message) {
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'error';
+        errorDiv.textContent = message;
+        chatContainer.appendChild(errorDiv);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+        
+        setTimeout(() => errorDiv.remove(), 5000);
+    }
+});
+</script>
+{% endblock %}

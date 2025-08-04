@@ -1,0 +1,863 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}AI Q&A - {{ paper.title }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    :root {
+        --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        --success-gradient: linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%);
+        --chat-bg: #f8f9fc;
+        --message-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        --sidebar-bg: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+    }
+
+    .qa-container {
+        height: calc(100vh - 100px);
+        background: var(--chat-bg);
+        border-radius: 20px;
+        overflow: hidden;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+    }
+
+    .qa-header {
+        background: var(--primary-gradient);
+        color: white;
+        padding: 1.5rem 2rem;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .qa-header::before {
+        content: '';
+        position: absolute;
+        top: -50%;
+        right: -10%;
+        width: 100px;
+        height: 100px;
+        background: rgba(255,255,255,0.1);
+        border-radius: 50%;
+        animation: float 4s ease-in-out infinite;
+    }
+
+    .paper-info-card {
+        background: rgba(255,255,255,0.15);
+        backdrop-filter: blur(10px);
+        border-radius: 15px;
+        padding: 1rem;
+        margin-top: 1rem;
+    }
+
+    .chat-area {
+        height: calc(100vh - 300px);
+        overflow-y: auto;
+        padding: 2rem;
+        background: var(--chat-bg);
+    }
+
+    .message-bubble {
+        max-width: 80%;
+        margin-bottom: 1.5rem;
+        animation: slideIn 0.3s ease-out;
+    }
+
+    @keyframes slideIn {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .user-message {
+        margin-left: auto;
+    }
+
+    .user-bubble {
+        background: var(--primary-gradient);
+        color: white;
+        padding: 1rem 1.5rem;
+        border-radius: 20px 20px 5px 20px;
+        box-shadow: var(--message-shadow);
+        position: relative;
+    }
+
+    .ai-bubble {
+        background: white;
+        color: #333;
+        padding: 1.5rem;
+        border-radius: 20px 20px 20px 5px;
+        box-shadow: var(--message-shadow);
+        border-left: 4px solid #667eea;
+    }
+
+    .message-meta {
+        font-size: 0.75rem;
+        opacity: 0.7;
+        margin-top: 0.5rem;
+    }
+
+    .sources-section {
+        background: #f8f9ff;
+        border-radius: 10px;
+        padding: 1rem;
+        margin-top: 1rem;
+        border-left: 3px solid #667eea;
+    }
+
+    .source-chip {
+        display: inline-block;
+        background: #e3f2fd;
+        color: #1976d2;
+        padding: 0.3rem 0.8rem;
+        border-radius: 15px;
+        font-size: 0.8rem;
+        margin: 0.2rem;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+
+    .source-chip:hover {
+        background: #1976d2;
+        color: white;
+        transform: scale(1.05);
+    }
+
+    .input-area {
+        background: white;
+        padding: 1.5rem 2rem;
+        border-top: 1px solid #e9ecef;
+    }
+
+    .chat-input {
+        border: 2px solid #e9ecef;
+        border-radius: 25px;
+        padding: 1rem 1.5rem;
+        font-size: 1rem;
+        transition: all 0.3s ease;
+        resize: none;
+    }
+
+    .chat-input:focus {
+        border-color: #667eea;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+
+    .send-btn {
+        background: var(--primary-gradient);
+        border: none;
+        border-radius: 50%;
+        width: 50px;
+        height: 50px;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.3s ease;
+    }
+
+    .send-btn:hover {
+        transform: scale(1.1);
+        box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+    }
+
+    .sidebar {
+        background: white;
+        height: 100%;
+        border-left: 1px solid #e9ecef;
+        overflow-y: auto;
+    }
+
+    .sidebar-header {
+        background: var(--sidebar-bg);
+        color: white;
+        padding: 1rem;
+        font-weight: 600;
+    }
+
+    .template-section {
+        padding: 1rem;
+    }
+
+    .template-category {
+        margin-bottom: 1.5rem;
+    }
+
+    .category-title {
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: #495057;
+        margin-bottom: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .template-chip {
+        display: block;
+        background: #f8f9fa;
+        border: 1px solid #e9ecef;
+        border-radius: 15px;
+        padding: 0.8rem 1rem;
+        margin-bottom: 0.5rem;
+        font-size: 0.85rem;
+        color: #495057;
+        text-decoration: none;
+        transition: all 0.3s ease;
+        cursor: pointer;
+    }
+
+    .template-chip:hover {
+        background: #667eea;
+        color: white;
+        border-color: #667eea;
+        transform: translateX(5px);
+    }
+
+    .process-banner {
+        background: linear-gradient(135deg, #ffeaa7 0%, #fab1a0 100%);
+        color: white;
+        padding: 1rem 2rem;
+        text-align: center;
+        border-radius: 10px;
+        margin: 1rem 2rem;
+    }
+
+    .floating-actions {
+        position: absolute;
+        bottom: 20px;
+        right: 20px;
+        z-index: 1000;
+    }
+
+    .fab {
+        width: 56px;
+        height: 56px;
+        border-radius: 50%;
+        background: var(--primary-gradient);
+        color: white;
+        border: none;
+        margin-bottom: 1rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.2rem;
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        transition: all 0.3s ease;
+    }
+
+    .fab:hover {
+        transform: scale(1.1);
+        box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+    }
+
+    .thinking-indicator {
+        display: none;
+        padding: 1rem 1.5rem;
+        background: white;
+        border-radius: 20px 20px 20px 5px;
+        box-shadow: var(--message-shadow);
+        max-width: 200px;
+    }
+
+    .thinking-dots {
+        display: flex;
+        gap: 4px;
+    }
+
+    .thinking-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #667eea;
+        animation: thinking 1.4s infinite ease-in-out;
+    }
+
+    .thinking-dot:nth-child(1) { animation-delay: -0.32s; }
+    .thinking-dot:nth-child(2) { animation-delay: -0.16s; }
+
+    @keyframes thinking {
+        0%, 80%, 100% {
+            transform: scale(0);
+            opacity: 0.5;
+        }
+        40% {
+            transform: scale(1);
+            opacity: 1;
+        }
+    }
+
+    .followup-questions {
+        background: #e8f4fd;
+        border-radius: 15px;
+        padding: 1rem;
+        margin-top: 1rem;
+    }
+
+    .followup-title {
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: #1976d2;
+        margin-bottom: 0.8rem;
+    }
+
+    .followup-btn {
+        display: block;
+        background: white;
+        border: 1px solid #e3f2fd;
+        border-radius: 10px;
+        padding: 0.8rem;
+        margin-bottom: 0.5rem;
+        color: #1976d2;
+        text-decoration: none;
+        font-size: 0.85rem;
+        transition: all 0.3s ease;
+    }
+
+    .followup-btn:hover {
+        background: #1976d2;
+        color: white;
+        transform: translateX(5px);
+    }
+
+    .tags-container {
+        margin-top: 0.5rem;
+    }
+
+    .paper-tag {
+        display: inline-block;
+        padding: 0.2rem 0.6rem;
+        border-radius: 12px;
+        font-size: 0.7rem;
+        color: white;
+        margin-right: 0.3rem;
+        margin-bottom: 0.3rem;
+    }
+
+    .empty-chat {
+        text-align: center;
+        padding: 3rem 2rem;
+        color: #6c757d;
+    }
+
+    .empty-chat i {
+        font-size: 4rem;
+        margin-bottom: 1rem;
+        opacity: 0.3;
+    }
+
+    .scroll-to-bottom {
+        position: absolute;
+        bottom: 100px;
+        right: 30px;
+        background: var(--primary-gradient);
+        color: white;
+        border: none;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 100;
+        transition: all 0.3s ease;
+    }
+
+    .scroll-to-bottom.show {
+        display: flex;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid p-4">
+    <div class="row">
+        <div class="col-12">
+            <nav aria-label="breadcrumb" class="mb-3">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="{% url 'papers:list' %}">My Papers</a></li>
+                    <li class="breadcrumb-item"><a href="{% url 'papers:detail' paper.id %}">{{ paper.title|truncatechars:30 }}</a></li>
+                    <li class="breadcrumb-item active">AI Q&A</li>
+                </ol>
+            </nav>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Main Chat Area -->
+        <div class="col-lg-9">
+            <div class="qa-container">
+                <!-- Header -->
+                <div class="qa-header">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h4 class="mb-1">
+                                <i class="fas fa-robot me-2"></i>AI Research Assistant
+                            </h4>
+                            <small class="opacity-75">Ask me anything about this paper</small>
+                        </div>
+                        <div class="text-center">
+                            {% if not is_processed %}
+                                <button id="process-btn" class="btn btn-light btn-sm">
+                                    <i class="fas fa-cogs me-1"></i>Process Paper
+                                </button>
+                            {% else %}
+                                <span class="badge bg-light text-dark">
+                                    <i class="fas fa-check me-1"></i>Ready
+                                </span>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- Paper Info Card -->
+                    <div class="paper-info-card">
+                        <h6 class="mb-2">{{ paper.title }}</h6>
+                        <div class="small opacity-75">
+                            {% if paper.authors %}
+                                <i class="fas fa-users me-1"></i>{{ paper.authors|truncatechars:50 }}
+                            {% endif %}
+                            <span class="mx-2">•</span>
+                            <i class="fas fa-calendar me-1"></i>{{ paper.created_at|date:"M d, Y" }}
+                        </div>
+                        {% if paper.tags.all %}
+                            <div class="tags-container">
+                                {% for tag in paper.tags.all %}
+                                    <span class="paper-tag" style="background-color: {{ tag.color }}">
+                                        {{ tag.name }}
+                                    </span>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Process Banner -->
+                {% if not is_processed %}
+                    <div class="process-banner">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>Process this paper first to enable AI Q&A functionality</strong>
+                    </div>
+                {% endif %}
+
+                <!-- Chat Messages -->
+                <div class="chat-area" id="chat-area">
+                    {% if questions %}
+                        {% for q in questions %}
+                            <!-- User Message -->
+                            <div class="message-bubble user-message">
+                                <div class="user-bubble">
+                                    <i class="fas fa-user me-2"></i>{{ q.question }}
+                                    <div class="message-meta text-end">
+                                        {{ q.created_at|date:"M d, H:i" }}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- AI Response -->
+                            <div class="message-bubble">
+                                <div class="ai-bubble">
+                                    <div class="d-flex align-items-start">
+                                        <div class="me-3">
+                                            <div class="bg-primary rounded-circle d-flex align-items-center justify-content-center" style="width: 35px; height: 35px;">
+                                                <i class="fas fa-robot text-white small"></i>
+                                            </div>
+                                        </div>
+                                        <div class="flex-grow-1">
+                                            {{ q.answer|linebreaks }}
+                                            
+                                            {% if q.sources %}
+                                                <div class="sources-section">
+                                                    <div class="d-flex align-items-center mb-2">
+                                                        <i class="fas fa-link me-2 text-primary"></i>
+                                                        <small class="fw-bold text-primary">Sources</small>
+                                                    </div>
+                                                    {% for source in q.sources %}
+                                                        <div class="source-chip" title="{{ source.content_preview }}">
+                                                            Chunk {{ source.chunk_id }}
+                                                        </div>
+                                                    {% endfor %}
+                                                </div>
+                                            {% endif %}
+                                            
+                                            <div class="message-meta">
+                                                <i class="fas fa-clock me-1"></i>{{ q.created_at|date:"M d, H:i" }}
+                                                {% if q.processing_time %}
+                                                    <span class="mx-2">•</span>
+                                                    <i class="fas fa-tachometer-alt me-1"></i>{{ q.processing_time|floatformat:1 }}s
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="empty-chat">
+                            <i class="fas fa-comments"></i>
+                            <h5>Start Your Research Conversation</h5>
+                            <p class="mb-0">Ask me anything about this paper. I can help you understand methodologies, findings, limitations, and more!</p>
+                        </div>
+                    {% endif %}
+
+                    <!-- Thinking Indicator -->
+                    <div class="message-bubble thinking-indicator" id="thinking-indicator">
+                        <div class="thinking-dots">
+                            <div class="thinking-dot"></div>
+                            <div class="thinking-dot"></div>
+                            <div class="thinking-dot"></div>
+                        </div>
+                        <small class="text-muted ms-2">AI is thinking...</small>
+                    </div>
+
+                    <!-- Follow-up Questions -->
+                    <div id="followup-container"></div>
+                </div>
+
+                <!-- Input Area -->
+                <div class="input-area">
+                    <form id="question-form">
+                        {% csrf_token %}
+                        <div class="row align-items-end">
+                            <div class="col">
+                                <textarea id="question-input" class="form-control chat-input" 
+                                         placeholder="Ask a question about this paper..." 
+                                         rows="1" {% if not is_processed %}disabled{% endif %}></textarea>
+                            </div>
+                            <div class="col-auto">
+                                <button type="submit" class="send-btn" {% if not is_processed %}disabled{% endif %}>
+                                    <i class="fas fa-paper-plane"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="mt-2">
+                            <small class="text-muted">
+                                <i class="fas fa-lightbulb me-1"></i>
+                                Try asking about methodology, key findings, limitations, or applications
+                            </small>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sidebar -->
+        <div class="col-lg-3">
+            <div class="sidebar">
+                <div class="sidebar-header text-center">
+                    <i class="fas fa-magic me-2"></i>Smart Templates
+                </div>
+                
+                <div class="template-section">
+                    {% for category, templates in templates_by_category.items %}
+                        <div class="template-category">
+                            <div class="category-title">{{ templates.0.get_category_display }}</div>
+                            {% for template in templates|slice:":3" %}
+                                <a href="#" class="template-chip" 
+                                   data-question="{{ template.question_text }}"
+                                   title="{{ template.description }}">
+                                    {{ template.question_text|truncatechars:50 }}
+                                </a>
+                            {% endfor %}
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Floating Actions -->
+<div class="floating-actions">
+    <button class="fab" id="export-btn" title="Export Q&A Session" {% if not questions %}disabled{% endif %}>
+        <i class="fas fa-download"></i>
+    </button>
+    <button class="fab" id="summary-btn" title="Generate Summary" {% if not is_processed %}disabled{% endif %}>
+        <i class="fas fa-file-alt"></i>
+    </button>
+</div>
+
+<!-- Scroll to Bottom -->
+<button class="scroll-to-bottom" id="scroll-to-bottom">
+    <i class="fas fa-chevron-down"></i>
+</button>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const questionForm = document.getElementById('question-form');
+    const questionInput = document.getElementById('question-input');
+    const chatArea = document.getElementById('chat-area');
+    const thinkingIndicator = document.getElementById('thinking-indicator');
+    const followupContainer = document.getElementById('followup-container');
+    const scrollToBottomBtn = document.getElementById('scroll-to-bottom');
+    
+    // Auto-resize textarea
+    questionInput.addEventListener('input', function() {
+        this.style.height = 'auto';
+        this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+    });
+    
+    // Process paper
+    const processBtn = document.getElementById('process-btn');
+    if (processBtn) {
+        processBtn.addEventListener('click', function() {
+            processBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Processing...';
+            processBtn.disabled = true;
+            
+            fetch(`{% url 'papers:process_paper' paper.id %}`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                },
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    showError(data.error || 'Failed to process paper');
+                    processBtn.innerHTML = '<i class="fas fa-cogs me-1"></i>Process Paper';
+                    processBtn.disabled = false;
+                }
+            })
+            .catch(error => {
+                showError('Network error: ' + error.message);
+                processBtn.innerHTML = '<i class="fas fa-cogs me-1"></i>Process Paper';
+                processBtn.disabled = false;
+            });
+        });
+    }
+    
+    // Submit question
+    questionForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const question = questionInput.value.trim();
+        if (!question) return;
+        
+        // Add user message
+        addUserMessage(question);
+        questionInput.value = '';
+        questionInput.style.height = 'auto';
+        
+        // Show thinking indicator
+        showThinking();
+        
+        // Send question
+        fetch(`{% url 'papers:ask_question' paper.id %}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+            },
+            body: `question=${encodeURIComponent(question)}`
+        })
+        .then(response => response.json())
+        .then(data => {
+            hideThinking();
+            
+            if (data.success) {
+                addAIMessage(data.answer, data.sources, data.processing_time);
+                
+                // Show follow-up questions
+                if (data.followup_questions && data.followup_questions.length > 0) {
+                    showFollowupQuestions(data.followup_questions);
+                }
+            } else {
+                addAIMessage('I apologize, but I encountered an error: ' + (data.error || 'Please try again.'));
+            }
+        })
+        .catch(error => {
+            hideThinking();
+            addAIMessage('I apologize, but I\'m having trouble connecting. Please check your internet connection and try again.');
+        });
+    });
+    
+    // Template buttons
+    document.querySelectorAll('.template-chip').forEach(chip => {
+        chip.addEventListener('click', function(e) {
+            e.preventDefault();
+            const question = this.dataset.question;
+            questionInput.value = question;
+            questionInput.focus();
+            
+            // Auto-submit if paper is processed
+            if ({{ is_processed|yesno:"true,false" }}) {
+                questionForm.dispatchEvent(new Event('submit'));
+            }
+        });
+    });
+    
+    // Floating action buttons
+    document.getElementById('export-btn').addEventListener('click', function() {
+        window.open(`{% url 'papers:export_qa' paper.id %}`, '_blank');
+    });
+    
+    document.getElementById('summary-btn').addEventListener('click', function() {
+        const btn = this;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        btn.disabled = true;
+        
+        fetch(`{% url 'papers:paper_summary' paper.id %}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                addUserMessage('Please provide a summary of this paper');
+                addAIMessage(data.summary);
+            } else {
+                showError(data.error || 'Failed to generate summary');
+            }
+            btn.innerHTML = '<i class="fas fa-file-alt"></i>';
+            btn.disabled = false;
+        })
+        .catch(error => {
+            showError('Network error: ' + error.message);
+            btn.innerHTML = '<i class="fas fa-file-alt"></i>';
+            btn.disabled = false;
+        });
+    });
+    
+    // Scroll management
+    chatArea.addEventListener('scroll', function() {
+        const isScrolledToBottom = chatArea.scrollHeight - chatArea.clientHeight <= chatArea.scrollTop + 1;
+        scrollToBottomBtn.classList.toggle('show', !isScrolledToBottom);
+    });
+    
+    scrollToBottomBtn.addEventListener('click', function() {
+        chatArea.scrollTo({
+            top: chatArea.scrollHeight,
+            behavior: 'smooth'
+        });
+    });
+    
+    // Helper functions
+    function addUserMessage(question) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'message-bubble user-message';
+        messageDiv.innerHTML = `
+            <div class="user-bubble">
+                <i class="fas fa-user me-2"></i>${escapeHtml(question)}
+                <div class="message-meta text-end">
+                    ${new Date().toLocaleString()}
+                </div>
+            </div>
+        `;
+        
+        // Remove empty chat if present
+        const emptyChat = chatArea.querySelector('.empty-chat');
+        if (emptyChat) emptyChat.remove();
+        
+        chatArea.appendChild(messageDiv);
+        scrollToBottom();
+    }
+    
+    function addAIMessage(answer, sources = [], processingTime = null) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'message-bubble';
+        
+        let sourcesHtml = '';
+        if (sources && sources.length > 0) {
+            sourcesHtml = `
+                <div class="sources-section">
+                    <div class="d-flex align-items-center mb-2">
+                        <i class="fas fa-link me-2 text-primary"></i>
+                        <small class="fw-bold text-primary">Sources</small>
+                    </div>
+                    ${sources.map(source => `
+                        <div class="source-chip" title="${escapeHtml(source.content_preview || '')}">
+                            Chunk ${source.chunk_id || 'N/A'}
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+        
+        messageDiv.innerHTML = `
+            <div class="ai-bubble">
+                <div class="d-flex align-items-start">
+                    <div class="me-3">
+                        <div class="bg-primary rounded-circle d-flex align-items-center justify-content-center" style="width: 35px; height: 35px;">
+                            <i class="fas fa-robot text-white small"></i>
+                        </div>
+                    </div>
+                    <div class="flex-grow-1">
+                        ${answer.replace(/\n/g, '<br>')}
+                        ${sourcesHtml}
+                        <div class="message-meta">
+                            <i class="fas fa-clock me-1"></i>${new Date().toLocaleString()}
+                            ${processingTime ? `<span class="mx-2">•</span><i class="fas fa-tachometer-alt me-1"></i>${processingTime.toFixed(1)}s` : ''}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        chatArea.appendChild(messageDiv);
+        scrollToBottom();
+    }
+    
+    function showThinking() {
+        thinkingIndicator.style.display = 'block';
+        scrollToBottom();
+    }
+    
+    function hideThinking() {
+        thinkingIndicator.style.display = 'none';
+    }
+    
+    function showFollowupQuestions(questions) {
+        followupContainer.innerHTML = `
+            <div class="followup-questions">
+                <div class="followup-title">
+                    <i class="fas fa-lightbulb me-2"></i>Follow-up Questions
+                </div>
+                ${questions.map(q => `
+                    <a href="#" class="followup-btn" data-question="${escapeHtml(q)}">
+                        ${escapeHtml(q)}
+                    </a>
+                `).join('')}
+            </div>
+        `;
+        
+        // Add click handlers
+        followupContainer.querySelectorAll('.followup-btn').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                e.preventDefault();
+                questionInput.value = this.dataset.question;
+                questionForm.dispatchEvent(new Event('submit'));
+                followupContainer.innerHTML = '';
+            });
+        });
+        
+        scrollToBottom();
+    }
+    
+    function scrollToBottom() {
+        setTimeout(() => {
+            chatArea.scrollTo({
+                top: chatArea.scrollHeight,
+                behavior: 'smooth'
+            });
+        }, 100);
+    }
+    
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    
+    function showError(message) {
+        // You can implement a toast notification here
+        console.error(message);
+    }
+    
+    // Initial scroll to bottom
+    scrollToBottom();
+});
+</script>
+{% endblock %}

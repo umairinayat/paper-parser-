@@ -1,13 +1,13 @@
-Django==5.1.1
-djangorestframework==3.14.0
-django-cors-headers==4.3.1
-django-crispy-forms==2.1
+Django
+djangorestframework
+django-cors-headers
+django-crispy-forms
 crispy-bootstrap5==0.7
-python-dotenv==1.0.0
+python-dotenv
 
 # Background task processing
-celery>=5.3.0
-redis>=4.5.0
+celery
+redis
 
 # AI and LangChain - Updated for compatibility
 langchain
@@ -16,30 +16,40 @@ langchain-community
 langgraph
 langchain-core
 groq
-openai>=1.0.0
+openai
 
 # Search tools - Updated to fix deprecation warnings
 ddgs
 arxiv
 
 # File processing
-PyPDF2==3.0.1
-PyMuPDF==1.23.26
-python-docx==1.1.0
+PyPDF2
+PyMuPDF
+python-docx
 
 # Data processing
 pandas
 numpy
 
 # Async support
-aiohttp==3.9.1
-asyncio-throttle==1.0.2
+aiohttp
+asyncio-throttle
 
 # Utilities
-requests==2.31.0
-beautifulsoup4==4.12.2
+requests
+beautifulsoup4
 lxml
-xmltodict==0.12.0
+xmltodict
+
+# RAG and embeddings
+sentence-transformers
+faiss-cpu
+tiktoken
+
+# Export functionality
+reportlab
+python-docx
 
 # Development
-python-decouple==3.8 
+python-decouple
+

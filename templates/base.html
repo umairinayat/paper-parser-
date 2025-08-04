@@ -11,6 +11,14 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <!-- Custom CSS -->
     <style>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --success-color: #28a745;
+            --warning-color: #ffc107;
+            --danger-color: #dc3545;
+            --info-color: #17a2b8;
+        }
+
         .navbar-brand {
             font-weight: bold;
         }
@@ -26,10 +34,252 @@
             padding: 2rem 0;
             margin-top: 3rem;
         }
+
+        /* Enhanced Loading States */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            backdrop-filter: blur(5px);
+        }
+
+        .loading-spinner {
+            text-align: center;
+            color: #667eea;
+        }
+
+        .spinner-modern {
+            width: 50px;
+            height: 50px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Enhanced Toast Notifications */
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9998;
+        }
+
+        .toast-modern {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+            border: none;
+            min-width: 300px;
+            margin-bottom: 10px;
+        }
+
+        .toast-header-modern {
+            background: transparent;
+            border-bottom: 1px solid #e9ecef;
+            padding: 1rem;
+            display: flex;
+            align-items: center;
+        }
+
+        .toast-body-modern {
+            padding: 1rem;
+        }
+
+        .toast-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 1rem;
+            color: white;
+        }
+
+        .toast-success .toast-icon { background: var(--success-color); }
+        .toast-warning .toast-icon { background: var(--warning-color); }
+        .toast-danger .toast-icon { background: var(--danger-color); }
+        .toast-info .toast-icon { background: var(--info-color); }
+
+        /* Button Loading States */
+        .btn-loading {
+            position: relative;
+            color: transparent !important;
+        }
+
+        .btn-loading::after {
+            content: '';
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            top: 50%;
+            left: 50%;
+            margin-left: -8px;
+            margin-top: -8px;
+            border: 2px solid transparent;
+            border-top: 2px solid currentColor;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            color: white;
+        }
+
+        /* Page Transition Effects */
+        .page-transition {
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all 0.6s ease;
+        }
+
+        .page-transition.loaded {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* Progress Bar */
+        .progress-modern {
+            height: 4px;
+            background: #e9ecef;
+            border-radius: 2px;
+            overflow: hidden;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 9997;
+            display: none;
+        }
+
+        .progress-bar-modern {
+            height: 100%;
+            background: var(--primary-gradient);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        /* Enhanced Messages */
+        .alert-modern {
+            border: none;
+            border-radius: 12px;
+            padding: 1rem 1.5rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+        }
+
+        .alert-modern i {
+            font-size: 1.2rem;
+            margin-right: 1rem;
+        }
+
+        .alert-success-modern {
+            background: linear-gradient(135deg, rgba(40, 167, 69, 0.1) 0%, rgba(40, 167, 69, 0.05) 100%);
+            color: var(--success-color);
+            border-left: 4px solid var(--success-color);
+        }
+
+        .alert-danger-modern {
+            background: linear-gradient(135deg, rgba(220, 53, 69, 0.1) 0%, rgba(220, 53, 69, 0.05) 100%);
+            color: var(--danger-color);
+            border-left: 4px solid var(--danger-color);
+        }
+
+        .alert-warning-modern {
+            background: linear-gradient(135deg, rgba(255, 193, 7, 0.1) 0%, rgba(255, 193, 7, 0.05) 100%);
+            color: #856404;
+            border-left: 4px solid var(--warning-color);
+        }
+
+        .alert-info-modern {
+            background: linear-gradient(135deg, rgba(23, 162, 184, 0.1) 0%, rgba(23, 162, 184, 0.05) 100%);
+            color: var(--info-color);
+            border-left: 4px solid var(--info-color);
+        }
+
+        /* Skeleton Loading */
+        .skeleton {
+            background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+            background-size: 200% 100%;
+            animation: loading 1.5s infinite;
+        }
+
+        @keyframes loading {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+
+        .skeleton-line {
+            height: 1rem;
+            border-radius: 4px;
+            margin-bottom: 0.5rem;
+        }
+
+        .skeleton-circle {
+            border-radius: 50%;
+        }
+
+        /* Floating Action Button */
+        .fab-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+
+        .fab {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: var(--primary-gradient);
+            color: white;
+            border: none;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            transition: all 0.3s ease;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .fab:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
 <body>
+    <!-- Global Loading Overlay -->
+    <div class="loading-overlay" id="global-loading" style="display: none;">
+        <div class="loading-spinner">
+            <div class="spinner-modern"></div>
+            <h5>Loading...</h5>
+            <p class="text-muted" id="loading-message">Please wait while we process your request</p>
+        </div>
+    </div>
+
+    <!-- Progress Bar -->
+    <div class="progress-modern" id="progress-bar">
+        <div class="progress-bar-modern" id="progress-fill"></div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toast-container"></div>
+
     <!-- Navigation -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
         <div class="container">
@@ -61,12 +311,12 @@
                         </li>
                         <li class="nav-item">
                             <a class="nav-link" href="{% url 'papers:upload' %}">
-                                <i class="fas fa-upload me-1"></i>Upload
+                                <i class="fas fa-upload me-1"></i>Upload Paper
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" href="{% url 'analysis:dashboard' %}">
-                                <i class="fas fa-chart-bar me-1"></i>Analysis
+                            <a class="nav-link" href="{% url 'papers:comparative_analysis' %}">
+                                <i class="fas fa-balance-scale me-1"></i>Compare Papers
                             </a>
                         </li>
                     {% endif %}
@@ -106,13 +356,14 @@
     </nav>
 
     <!-- Main Content -->
-    <main class="container my-4">
+    <main class="container my-4 page-transition">
         {% if messages %}
             <div class="messages">
                 {% for message in messages %}
-                    <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
-                        {{ message }}
-                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    <div class="alert-modern alert-{{ message.tags }}-modern alert-dismissible fade show" role="alert">
+                        <i class="fas {% if message.tags == 'success' %}fa-check-circle{% elif message.tags == 'error' or message.tags == 'danger' %}fa-exclamation-triangle{% elif message.tags == 'warning' %}fa-exclamation-circle{% else %}fa-info-circle{% endif %}"></i>
+                        <div class="flex-grow-1">{{ message }}</div>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                     </div>
                 {% endfor %}
             </div>
@@ -140,6 +391,189 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <!-- jQuery -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+    <!-- Enhanced UI JavaScript -->
+    <script>
+    // Global UI Enhancement Functions
+    class UIEnhancer {
+        static showLoading(message = 'Loading...') {
+            const overlay = document.getElementById('global-loading');
+            const messageEl = document.getElementById('loading-message');
+            if (messageEl) messageEl.textContent = message;
+            if (overlay) overlay.style.display = 'flex';
+        }
+
+        static hideLoading() {
+            const overlay = document.getElementById('global-loading');
+            if (overlay) overlay.style.display = 'none';
+        }
+
+        static showProgress() {
+            const progressBar = document.getElementById('progress-bar');
+            if (progressBar) progressBar.style.display = 'block';
+        }
+
+        static setProgress(percentage) {
+            const progressFill = document.getElementById('progress-fill');
+            if (progressFill) progressFill.style.width = percentage + '%';
+        }
+
+        static hideProgress() {
+            const progressBar = document.getElementById('progress-bar');
+            const progressFill = document.getElementById('progress-fill');
+            if (progressBar) progressBar.style.display = 'none';
+            if (progressFill) progressFill.style.width = '0%';
+        }
+
+        static showToast(type, title, message, duration = 5000) {
+            const container = document.getElementById('toast-container');
+            if (!container) return;
+
+            const toastId = 'toast-' + Date.now();
+            const icons = {
+                success: 'fa-check-circle',
+                error: 'fa-exclamation-triangle',
+                warning: 'fa-exclamation-circle',
+                info: 'fa-info-circle'
+            };
+
+            const toastHTML = `
+                <div class="toast toast-modern toast-${type}" id="${toastId}" role="alert" aria-live="assertive" aria-atomic="true">
+                    <div class="toast-header-modern">
+                        <div class="toast-icon">
+                            <i class="fas ${icons[type] || icons.info}"></i>
+                        </div>
+                        <div class="flex-grow-1">
+                            <strong>${title}</strong>
+                        </div>
+                        <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+                    </div>
+                    <div class="toast-body-modern">
+                        ${message}
+                    </div>
+                </div>
+            `;
+
+            container.insertAdjacentHTML('beforeend', toastHTML);
+            const toastElement = document.getElementById(toastId);
+            const toast = new bootstrap.Toast(toastElement, { delay: duration });
+            toast.show();
+
+            // Remove element after hiding
+            toastElement.addEventListener('hidden.bs.toast', function() {
+                this.remove();
+            });
+        }
+
+        static setButtonLoading(button, loading = true) {
+            if (loading) {
+                button.classList.add('btn-loading');
+                button.disabled = true;
+                button.setAttribute('data-original-text', button.innerHTML);
+            } else {
+                button.classList.remove('btn-loading');
+                button.disabled = false;
+                const originalText = button.getAttribute('data-original-text');
+                if (originalText) {
+                    button.innerHTML = originalText;
+                    button.removeAttribute('data-original-text');
+                }
+            }
+        }
+
+        static showSkeleton(container, lines = 3) {
+            let skeletonHTML = '';
+            for (let i = 0; i < lines; i++) {
+                const width = Math.random() * 40 + 60; // Random width between 60-100%
+                skeletonHTML += `<div class="skeleton skeleton-line" style="width: ${width}%"></div>`;
+            }
+            container.innerHTML = skeletonHTML;
+        }
+
+        static hideSkeleton(container, content) {
+            container.innerHTML = content;
+        }
+    }
+
+    // Global event handlers
+    document.addEventListener('DOMContentLoaded', function() {
+        // Page transition effect
+        setTimeout(() => {
+            document.querySelector('.page-transition')?.classList.add('loaded');
+        }, 100);
+
+        // Auto-dismiss alerts after 5 seconds
+        document.querySelectorAll('.alert-modern').forEach(alert => {
+            setTimeout(() => {
+                const closeBtn = alert.querySelector('.btn-close');
+                if (closeBtn) closeBtn.click();
+            }, 5000);
+        });
+
+        // Enhanced form submissions
+        document.querySelectorAll('form').forEach(form => {
+            form.addEventListener('submit', function(e) {
+                const submitBtn = form.querySelector('input[type="submit"], button[type="submit"]');
+                if (submitBtn && !submitBtn.classList.contains('no-loading')) {
+                    UIEnhancer.setButtonLoading(submitBtn, true);
+                }
+            });
+        });
+
+        // Enhanced AJAX error handling
+        $(document).ajaxStart(function() {
+            UIEnhancer.showProgress();
+        }).ajaxStop(function() {
+            UIEnhancer.hideProgress();
+        }).ajaxError(function(event, xhr, settings, error) {
+            UIEnhancer.showToast('error', 'Request Failed', 
+                'An error occurred while processing your request. Please try again.');
+        });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            // Escape to close modals and overlays
+            if (e.key === 'Escape') {
+                const overlay = document.getElementById('global-loading');
+                if (overlay && overlay.style.display !== 'none') {
+                    UIEnhancer.hideLoading();
+                }
+            }
+        });
+
+        // Add smooth scrolling to all anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+
+        // Auto-hide navbar on scroll (mobile)
+        let lastScrollTop = 0;
+        const navbar = document.querySelector('.navbar');
+        if (navbar && window.innerWidth <= 768) {
+            window.addEventListener('scroll', function() {
+                const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+                if (scrollTop > lastScrollTop && scrollTop > 100) {
+                    navbar.style.transform = 'translateY(-100%)';
+                } else {
+                    navbar.style.transform = 'translateY(0)';
+                }
+                lastScrollTop = scrollTop;
+            });
+        }
+    });
+
+    // Make UIEnhancer globally available
+    window.UIEnhancer = UIEnhancer;
+    </script>
     {% block extra_js %}{% endblock %}
 </body>
 </html> 

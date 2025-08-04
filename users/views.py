@@ -74,7 +74,7 @@ def dashboard(request):
         'user_papers': user_papers,
         'recent_analyses': recent_analyses,
         'total_papers': user_papers.count(),
-        'completed_analyses': len([p for p in user_papers if p.status == 'completed']),
-        'pending_analyses': len([p for p in user_papers if p.status == 'pending']),
+        'completed_analyses': len([p for p in user_papers if p.analysis_status == 'completed']),
+        'pending_analyses': len([p for p in user_papers if p.analysis_status == 'pending']),
     }
-    return render(request, 'users/dashboard.html', context)
+    return render(request, 'users/dashboard_enhanced.html', context)
